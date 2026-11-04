@@ -1,0 +1,52 @@
+{
+  "name": "dsh-java-desktop",
+  "private": true,
+  "version": "0.2.2",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:build": "npm run agent:prepare && tauri build",
+    "agent:build": "cd ../dsh-java && mvn -DskipTests package",
+    "agent:copy": "cp ../dsh-java/dsh-java-app/target/dsh-java-app-0.2.2-exec.jar resources/agent/dsh-java-app.jar",
+    "agent:runtime": "node scripts/prepare-runtime.mjs",
+    "agent:prepare": "npm run agent:build && npm run agent:copy && npm run agent:runtime",
+    "agent:verify": "test -f resources/agent/dsh-java-app.jar",
+    "test": "vitest run --config tests/unit/vitest.config.ts",
+    "test:watch": "vitest --config tests/unit/vitest.config.ts"
+  },
+  "dependencies": {
+    "@tauri-apps/api": ">=2.11.0 <2.12.0",
+    "@tauri-apps/plugin-http": ">=2.6.0 <2.7.0",
+    "@tauri-apps/plugin-process": ">=2.3.1 <2.4.0",
+    "@tauri-apps/plugin-updater": ">=2.11.0 <2.12.0",
+    "echarts": "^6.1.0",
+    "highlight.js": "^11.12.0",
+    "mammoth": "^1.12.3",
+    "mdast-util-gfm-footnote": "^2.1.0",
+    "mdast-util-gfm-strikethrough": "^2.0.0",
+    "mdast-util-gfm-table": "^2.0.0",
+    "mdast-util-gfm-task-list-item": "^2.0.0",
+    "micromark-extension-gfm-footnote": "^2.1.0",
+    "micromark-extension-gfm-strikethrough": "^2.1.0",
+    "micromark-extension-gfm-table": "^2.1.2",
+    "micromark-extension-gfm-task-list-item": "^2.1.0",
+    "micromark-util-combine-extensions": "^2.0.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.5",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.11",
+    "vitest": "^5.0.5"
+  }
+}

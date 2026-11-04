@@ -1,0 +1,35 @@
+name: Unit Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  vitest:
+    name: desktop / npm test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # canonical fixtures 在 dsh-java 仓库；取不到时 contract.test.ts 自动跳过而不是失败。
+      # 若 dsh-java 是私有仓库，在 desktop 仓库加 secret DSH_JAVA_TOKEN（只读 PAT）即可。
+      - name: Checkout canonical fixtures
+        uses: actions/checkout@v5
+        with:
+          repository: linlannet/dsh-java
+          path: dsh-java
+          token: ${{ secrets.DSH_JAVA_TOKEN || github.token }}
+
+      - name: Run unit tests
+        run: npm test
+        env:
+          DSH_CONTRACT_DIR: ${{ github.workspace }}/dsh-java/docs/spec/contract/fixtures

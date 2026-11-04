@@ -1,0 +1,65 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DSH Java Desktop",
+  "version": "0.2.2",
+  "identifier": "net.linlan.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "DSH Java Desktop",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 640,
+        "center": true,
+        "devtools": true,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller",
+        "silent": true
+      }
+    },
+    "resources": {
+      "../resources/agent/dsh-java-app.jar": "agent/dsh-java-app.jar",
+      "../resources/agent/runtime": "agent/runtime"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU5ODNCNDc2MzY1OTRDMzYKUldRMlRGazJkclNEV2ZiM25JV2l4d0RKRGtKV09kc1oxdWdYamc0Uzl3SzhGd1NVb0pJK1U4VmQK",
+      "endpoints": [
+        "https://github.com/linlannet/dsh-java-desktop/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}
