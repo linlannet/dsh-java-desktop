@@ -56,7 +56,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU5ODNCNDc2MzY1OTRDMzYKUldRMlRGazJkclNEV2ZiM25JV2l4d0RKRGtKV09kc1oxdWdYamc0Uzl3SzhGd1NVb0pJK1U4VmQK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMwOTgxMzVBMDk4RkVBQjMKUldTejZvOEpXaE9Zd0V4M01IQkZVazRJVG5MclMzYlRUL3pKQ1IwclNsQ25VZ2pyeFV0UTk3OEYK",
       "endpoints": [
         "https://github.com/linlannet/dsh-java-desktop/releases/latest/download/latest.json"
       ]
