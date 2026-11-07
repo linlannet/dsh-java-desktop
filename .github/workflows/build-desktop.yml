@@ -77,6 +77,11 @@ jobs:
         if: inputs.platform == 'macos'
         run: |
           set -euo pipefail
+          # 未配置 Apple 证书时跳过签名，产出未签名 dmg（用户打开会有 Gatekeeper 提示）
+          if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ] || [ -z "${{ secrets.APPLE_SIGNING_IDENTITY }}" ]; then
+            echo "::warning::APPLE_CERTIFICATE 或 APPLE_SIGNING_IDENTITY 未配置，跳过 macOS 代码签名与公证（将产出未签名 dmg）"
+            exit 0
+          fi
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -88,8 +93,7 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security default-keychain -s "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -q "\".*\"" || (echo "No valid codesigning identity found." && exit 1)
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -Fq "${{ secrets.APPLE_SIGNING_IDENTITY }}" || (echo "APPLE_SIGNING_IDENTITY not found." && exit 1)
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -Fq "${{ secrets.APPLE_SIGNING_IDENTITY }}" || (echo "::error::APPLE_SIGNING_IDENTITY 在导入的钥匙串中未找到，请核对。" && exit 1)
 
       - name: Build and bundle agent (jar + JRE runtime)
         env:
