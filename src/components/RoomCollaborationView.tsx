@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { native_invoke } from "../platform/native";
 import ReactMarkdown from "react-markdown";
 import remarkGfmCompatible from "../lib/remark-gfm-compatible";
 import { rehypeHighlight } from "../lib/markdown-plugins";
@@ -428,7 +428,7 @@ const RoomCollaborationView = memo(function RoomCollaborationView({ port, roomId
     }
     setExistingArtifactFiles(null);
     let cancelled = false;
-    void invoke<string[]>("existing_local_files", { paths })
+    void native_invoke<string[]>("existing_local_files", { paths })
       .then((existing) => {
         if (!cancelled) setExistingArtifactFiles(new Set(existing));
       })
@@ -607,7 +607,7 @@ const RoomCollaborationView = memo(function RoomCollaborationView({ port, roomId
           }
           if (href) {
             event.preventDefault();
-            void invoke("open_external", { url: href }).catch((error) => {
+            void native_invoke("open_external", { url: href }).catch((error) => {
               console.error("打开外部链接失败:", error);
             });
           }

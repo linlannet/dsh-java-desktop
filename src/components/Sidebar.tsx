@@ -1,3 +1,4 @@
+import { storage_get, storage_set } from "../platform/storage";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { DigitalHuman, SessionSummary, WorkspaceEntry } from "../types";
 import { sanitizeDisplayName, stripHiddenContext, truncateSessionTitle, visibleUserMessage } from "../lib/text";
@@ -242,10 +243,10 @@ export default function Sidebar({
   const [timeFilter, setTimeFilter] = useState<SessionTimeFilter>("all");
   // 列表模式："all" 默认对话列表（平铺全部对话），"projects" 按项目分组
   const [listMode, setListMode] = useState<"all" | "projects">(
-    () => (localStorage.getItem("dsh-sidebar-list-mode") === "projects" ? "projects" : "all"),
+    () => (storage_get("dsh-sidebar-list-mode") === "projects" ? "projects" : "all"),
   );
   useEffect(() => {
-    localStorage.setItem("dsh-sidebar-list-mode", listMode);
+    storage_set("dsh-sidebar-list-mode", listMode);
   }, [listMode]);
   // 默认对话列表分页
   const [allListCount, setAllListCount] = useState(SESSION_PAGE_SIZE);

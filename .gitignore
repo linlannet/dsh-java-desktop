@@ -7,6 +7,7 @@ src-tauri/target/
 src-tauri/gen/schemas/
 src-tauri/updater.key
 resources/agent/*.log
+resources/agent/dsh-java-app.jar
 resources/agent/runtime/*
 !resources/agent/runtime/.gitkeep
 data/

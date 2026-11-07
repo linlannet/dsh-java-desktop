@@ -366,7 +366,7 @@ CI 需在仓库 `Settings → Secrets and variables → Actions` 配置：
 | `APPLE_PASSWORD` | macOS 公证使用的 App-Specific Password |
 | `APPLE_TEAM_ID` | Apple 开发者 Team ID |
 
-`GITHUB_TOKEN` 不需要手动配置。updater 私钥位置见 `src-tauri/updater.key`，公开签名密钥已写入 `src-tauri/tauri.conf.json`。
+`GITHUB_TOKEN` 不需要手动配置。updater 公钥位置见 `src-tauri/updater.key`，公开签名密钥已写入 `src-tauri/tauri.conf.json`；私钥单独保存，需在 Actions Secret 配置。
 
 ---
 

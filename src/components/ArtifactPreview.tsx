@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { native_invoke } from "../platform/native";
 import ReactMarkdown from "react-markdown";
 import remarkGfmCompatible from "../lib/remark-gfm-compatible";
 import { rehypeHighlight } from "../lib/markdown-plugins";
@@ -90,7 +90,7 @@ const ArtifactPreview = memo(function ArtifactPreview({ artifact, room, onClose,
           }
           if (href) {
             event.preventDefault();
-            void invoke("open_external", { url: href }).catch((error) => {
+            void native_invoke("open_external", { url: href }).catch((error) => {
               console.error("打开外部链接失败:", error);
             });
           }
@@ -118,7 +118,7 @@ const ArtifactPreview = memo(function ArtifactPreview({ artifact, room, onClose,
     }
     setExistingFilePaths(null);
     let cancelled = false;
-    void invoke<string[]>("existing_local_files", { paths: filePaths })
+    void native_invoke<string[]>("existing_local_files", { paths: filePaths })
       .then((existing) => {
         if (!cancelled) setExistingFilePaths(new Set(existing));
       })

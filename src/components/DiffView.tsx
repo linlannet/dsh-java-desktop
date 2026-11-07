@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { native_invoke } from "../platform/native";
 import { useEffect, useMemo, useState } from "react";
 import { languageFromExtension } from "../lib/markdown-plugins";
 import hljs from "highlight.js/lib/common";
@@ -195,7 +195,7 @@ export function useFileDiff(basePath: string, filePath: string) {
     let cancelled = false;
     let last = "";
     const poll = () => {
-      void invoke<{ mtimeMs: number; size: number } | null>("local_file_stamp", { path: filePath })
+      void native_invoke<{ mtimeMs: number; size: number } | null>("local_file_stamp", { path: filePath })
         .then((stamp) => {
           if (cancelled || !stamp) return;
           const key = `${stamp.mtimeMs}:${stamp.size}`;
@@ -224,7 +224,7 @@ export function useFileDiff(basePath: string, filePath: string) {
     let cancelled = false;
     setLoading(true);
     setError("");
-    void invoke<FileDiffResult>("project_file_diff", { path: basePath, filePath })
+    void native_invoke<FileDiffResult>("project_file_diff", { path: basePath, filePath })
       .then((result) => {
         if (!cancelled) setDiff(result);
       })

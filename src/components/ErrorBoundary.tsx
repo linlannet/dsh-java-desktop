@@ -1,3 +1,4 @@
+import { storage_get, storage_set } from "../platform/storage";
 import React from "react";
 
 /**
@@ -8,7 +9,7 @@ import React from "react";
  *
  * 行为：
  * - 捕获渲染期/生命周期异常，展示可读的错误面板（含错误摘要与组件栈），
- *   并把 details 写入 localStorage 供后续排查（循环滚动保留最近 5 次）。
+ *   并把 details 写入 本地存储 供后续排查（循环滚动保留最近 5 次）。
  * - 提供「重试」按钮：清空内部错误状态重新渲染整棵树（修复数据后可原地恢复）。
  * - 不吞 Promise/事件回调里的异步异常（那些本就走 window.onerror 通道）。
  */
@@ -18,11 +19,11 @@ const ERROR_LOG_LIMIT = 5;
 
 function recordErrorLog(entry: { message: string; stack: string | null; at: string }) {
   try {
-    const raw = window.localStorage.getItem(ERROR_LOG_KEY);
+    const raw = storage_get(ERROR_LOG_KEY);
     const list: unknown[] = raw ? JSON.parse(raw) : [];
     list.push(entry);
     while (list.length > ERROR_LOG_LIMIT) list.shift();
-    window.localStorage.setItem(ERROR_LOG_KEY, JSON.stringify(list));
+    storage_set(ERROR_LOG_KEY, JSON.stringify(list));
   } catch {
     // 存储失败（配额/隐私模式）时静默——错误面板本身仍然可用
   }

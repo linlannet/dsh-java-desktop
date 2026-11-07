@@ -3,7 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type Component
 import ReactMarkdown from "react-markdown";
 import remarkGfmCompatible from "../lib/remark-gfm-compatible";
 import { rehypeHighlight } from "../lib/markdown-plugins";
-import { invoke } from "@tauri-apps/api/core";
+import { native_invoke } from "../platform/native";
 import { ArrowDownIcon, ChevronIcon, CopyIcon, DrawIoIcon, EChartIcon, ExcelSheetIcon, FileIcon, FolderIcon, GitBranchIcon, MarkdownIcon, PlusIcon, SendIcon, ShieldIcon, StopIcon, ToolIcon, WordDocIcon, XIcon } from "./icons";
 import { HumanAvatar, PRESENCE_TEXT } from "./DigitalHumanCatalog";
 import { AttributionAvatar } from "./AttributionAvatar";
@@ -376,7 +376,7 @@ function RunSummaryFiles({ files, onOpenFile, basePath }: { files: string[]; onO
     const allCandidates = [...new Set(candidateLists.flat())];
     let cancelled = false;
     let retryTimer: number | undefined;
-    invoke<(LocalPathKind | null)[]>("local_path_kinds", { paths: allCandidates })
+    native_invoke<(LocalPathKind | null)[]>("local_path_kinds", { paths: allCandidates })
       .then((result) => {
         if (cancelled) return;
         const kindByPath: Record<string, LocalPathKind> = {};
@@ -433,7 +433,7 @@ function RunFileChip({ file, kind, onOpenFile }: { file: string; kind: LocalPath
     if (missing) return;
     // 文件夹点击直接在文件管理器打开；文件优先走右侧预览
     if (kind === "dir" || !onOpenFile) {
-      void invoke("open_local_file", { path: file }).catch((error) => {
+      void native_invoke("open_local_file", { path: file }).catch((error) => {
         console.error("打开路径失败:", error);
       });
       return;
@@ -879,7 +879,7 @@ export default function ConversationView({
   };
 
   const openExternal = (url: string) => {
-    invoke("open_external", { url }).catch((error) => {
+    native_invoke("open_external", { url }).catch((error) => {
       console.error("打开外部链接失败:", error);
     });
   };

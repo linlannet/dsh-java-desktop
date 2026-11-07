@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { native_invoke } from "../platform/native";
 import { listMessages } from "../lib/agent-client";
 import { normalizeConversationMessage, sessionTitle } from "../App";
 import type { ConversationMessage, SessionSummary, WorkspaceEntry } from "../types";
@@ -233,7 +233,7 @@ function buildFileCards(
 async function filterExistingFileCards(cards: FileCard[]): Promise<FileCard[]> {
   const paths = Array.from(new Set(cards.map((card) => card.rawPath).filter((path): path is string => Boolean(path))));
   if (paths.length === 0) return [];
-  const existing = await invoke<ExistingLocalFilesResult>("existing_local_files", { paths });
+  const existing = await native_invoke<ExistingLocalFilesResult>("existing_local_files", { paths });
   const existingSet = new Set(existing);
   return cards.filter((card) => card.rawPath && existingSet.has(card.rawPath));
 }
@@ -366,7 +366,7 @@ export default function InfoRail(props: InfoRailProps) {
     }
     let cancelled = false;
     setGitLoading(true);
-    void invoke<GitChangeSummary>("project_git_changes", { path: activeProject.path })
+    void native_invoke<GitChangeSummary>("project_git_changes", { path: activeProject.path })
       .then((summary) => {
         if (!cancelled) setGitChanges(summary);
       })
@@ -384,7 +384,7 @@ export default function InfoRail(props: InfoRailProps) {
   const refreshGit = () => {
     if (!activeProject?.path) return;
     setGitLoading(true);
-    void invoke<GitChangeSummary>("project_git_changes", { path: activeProject.path })
+    void native_invoke<GitChangeSummary>("project_git_changes", { path: activeProject.path })
       .then(setGitChanges)
       .catch(() => undefined)
       .finally(() => setGitLoading(false));

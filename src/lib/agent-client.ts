@@ -1,4 +1,6 @@
-import { httpFetch, localAuthInit } from "./http";
+import { httpFetch } from "./http";
+import { connection_base_url, type ConnectionProfile } from "../platform/connection";
+import { is_known_stream_event } from "./events";
 import type {
   ApiEnvelope,
   ConversationMessage,
@@ -14,14 +16,12 @@ import type {
   WorkspaceEntry,
 } from "../types";
 
-function baseUrl(port: number): string {
-  return `http://127.0.0.1:${port}`;
-}
 
-export async function readHealth(port: number): Promise<boolean> {
+
+export async function readHealth(port: number | ConnectionProfile): Promise<boolean> {
   try {
     const response = await withTimeout(
-      fetch(`${baseUrl(port)}/api/harness/config/effective`, localAuthInit(`${baseUrl(port)}/api/harness/config/effective`)),
+      httpFetch(`${connection_base_url(port)}/api/harness/config/effective`),
       5_000,
       "健康检查超时",
     );
@@ -32,7 +32,7 @@ export async function readHealth(port: number): Promise<boolean> {
   }
 
   try {
-    await window.fetch(`${baseUrl(port)}/api/harness/config/effective`, {
+    await httpFetch(`${connection_base_url(port)}/api/harness/config/effective`, {
       mode: "no-cors",
     });
     return true;
@@ -42,7 +42,7 @@ export async function readHealth(port: number): Promise<boolean> {
 }
 
 export async function waitForService(
-  port: number,
+  port: number | ConnectionProfile,
   timeoutMs = 45_000,
   onTick?: (elapsedMs: number, timeoutMs: number) => void,
 ): Promise<void> {
@@ -76,15 +76,15 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label = "请求�
   ]);
 }
 
-async function requestOnce<T>(port: number, path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+async function requestOnce<T>(port: number | ConnectionProfile, path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const response = await withTimeout(
-    fetch(`${baseUrl(port)}${path}`, localAuthInit(`${baseUrl(port)}${path}`, {
+    httpFetch(`${connection_base_url(port)}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
         ...init?.headers,
       },
-    })),
+    }),
     timeoutMs,
   );
   const payload = await withTimeout(
@@ -97,7 +97,7 @@ async function requestOnce<T>(port: number, path: string, init?: RequestInit, ti
   return payload.data as T;
 }
 
-async function request<T>(port: number, path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
+async function request<T>(port: number | ConnectionProfile, path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   try {
     return await requestOnce<T>(port, path, init, timeoutMs);
   } catch (error) {
@@ -111,38 +111,38 @@ async function request<T>(port: number, path: string, init?: RequestInit, timeou
 }
 
 export async function listSessions(
-  port: number,
+  port: number | ConnectionProfile,
   limit = 200,
 ): Promise<SessionSummary[]> {
   return request<SessionSummary[]>(port, `/api/harness/console/sessions?limit=${limit}&offset=0`);
 }
 
-export async function listWorkspaces(port: number): Promise<WorkspaceEntry[]> {
+export async function listWorkspaces(port: number | ConnectionProfile): Promise<WorkspaceEntry[]> {
   return request<WorkspaceEntry[]>(port, "/api/agent/workspaces");
 }
 
-export async function createWorkspace(port: number, name: string): Promise<WorkspaceEntry[]> {
+export async function createWorkspace(port: number | ConnectionProfile, name: string): Promise<WorkspaceEntry[]> {
   return request<WorkspaceEntry[]>(port, "/api/agent/workspaces", {
     method: "POST",
     body: JSON.stringify({ name }),
   });
 }
 
-export async function renameWorkspace(port: number, name: string, newName: string): Promise<WorkspaceEntry[]> {
+export async function renameWorkspace(port: number | ConnectionProfile, name: string, newName: string): Promise<WorkspaceEntry[]> {
   return request<WorkspaceEntry[]>(port, `/api/agent/workspaces/${encodeURIComponent(name)}`, {
     method: "PATCH",
     body: JSON.stringify({ name: newName }),
   });
 }
 
-export async function deleteWorkspace(port: number, name: string): Promise<WorkspaceEntry[]> {
+export async function deleteWorkspace(port: number | ConnectionProfile, name: string): Promise<WorkspaceEntry[]> {
   return request<WorkspaceEntry[]>(port, `/api/agent/workspaces/${encodeURIComponent(name)}`, {
     method: "DELETE",
   });
 }
 
 export async function listMessages(
-  port: number,
+  port: number | ConnectionProfile,
   sessionId: string,
 ): Promise<ConversationMessage[]> {
   return request<ConversationMessage[]>(
@@ -151,12 +151,12 @@ export async function listMessages(
   );
 }
 
-export async function listRuntimeApprovals(port: number): Promise<RuntimeApproval[]> {
+export async function listRuntimeApprovals(port: number | ConnectionProfile): Promise<RuntimeApproval[]> {
   return request<RuntimeApproval[]>(port, "/api/harness/approvals/runtime/pending");
 }
 
 export async function resolveRuntimeApproval(
-  port: number,
+  port: number | ConnectionProfile,
   approvalId: string,
   verdict: "ALLOW_ONCE" | "ALLOW_SESSION" | "DENY" | "CANCEL",
 ): Promise<void> {
@@ -167,14 +167,14 @@ export async function resolveRuntimeApproval(
 }
 
 /** ask_user_question 挂起的待回答问题列表（前端流式期间轮询） */
-export async function listPendingUserQuestions(port: number): Promise<RuntimeQuestion[]> {
+export async function listPendingUserQuestions(port: number | ConnectionProfile): Promise<RuntimeQuestion[]> {
   const result = await request<RuntimeQuestion[]>(port, "/api/harness/questions/runtime/pending");
   return Array.isArray(result) ? result : [];
 }
 
 /** 提交用户回答，唤醒挂起等待的 agent */
 export async function submitUserAnswer(
-  port: number,
+  port: number | ConnectionProfile,
   questionId: string,
   answers: Array<{ id: string; selected: string[]; custom?: string }>,
 ): Promise<{ submitted: boolean; error?: string }> {
@@ -188,20 +188,20 @@ export async function submitUserAnswer(
   );
 }
 
-export async function listModelSettings(port: number): Promise<ModelSetting[]> {
+export async function listModelSettings(port: number | ConnectionProfile): Promise<ModelSetting[]> {
   return request<ModelSetting[]>(port, "/api/harness/settings/models");
 }
 
-export async function listAvailableModels(port: number): Promise<AvailableModel[]> {
+export async function listAvailableModels(port: number | ConnectionProfile): Promise<AvailableModel[]> {
   return request<AvailableModel[]>(port, "/api/harness/runtime/models");
 }
 
-export async function listChannelPresets(port: number): Promise<ChannelPreset[]> {
+export async function listChannelPresets(port: number | ConnectionProfile): Promise<ChannelPreset[]> {
   return request<ChannelPreset[]>(port, "/api/harness/channels/presets");
 }
 
 export async function discoverModels(
-  port: number,
+  port: number | ConnectionProfile,
   body: { baseUrl: string; apiKeyRef: string; protocol: string },
 ): Promise<string[]> {
   const result = await request<string[] | { models?: string[] }>(port, "/api/harness/settings/models/discover", {
@@ -212,21 +212,21 @@ export async function discoverModels(
   return result?.models || [];
 }
 
-export async function saveModelSetting(port: number, body: ModelSetting): Promise<ModelSetting> {
+export async function saveModelSetting(port: number | ConnectionProfile, body: ModelSetting): Promise<ModelSetting> {
   return request<ModelSetting>(port, "/api/harness/settings/models", {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
-export async function activateModelSetting(port: number, channelCode: string): Promise<ModelSetting> {
+export async function activateModelSetting(port: number | ConnectionProfile, channelCode: string): Promise<ModelSetting> {
   return request<ModelSetting>(port, "/api/harness/settings/models/active", {
     method: "POST",
     body: JSON.stringify({ channelCode }),
   });
 }
 
-export async function deleteModelSetting(port: number, channelCode: string): Promise<void> {
+export async function deleteModelSetting(port: number | ConnectionProfile, channelCode: string): Promise<void> {
   await request(port, `/api/harness/settings/models/${encodeURIComponent(channelCode)}`, {
     method: "DELETE",
   });
@@ -236,14 +236,14 @@ export async function deleteModelSetting(port: number, channelCode: string): Pro
 
 const PLUGIN_API = "/api/harness/plugins";
 
-export async function listPlugins(port: number): Promise<HarnessPlugin[]> {
+export async function listPlugins(port: number | ConnectionProfile): Promise<HarnessPlugin[]> {
   return request<HarnessPlugin[]>(port, PLUGIN_API);
 }
 
-export async function analyzePluginJar(port: number, file: File): Promise<PluginCandidate> {
+export async function analyzePluginJar(port: number | ConnectionProfile, file: File): Promise<PluginCandidate> {
   const form = new FormData();
   form.append("file", file);
-  const response = await fetch(`${baseUrl(port)}${PLUGIN_API}/analyze-jar`, {
+  const response = await httpFetch(`${connection_base_url(port)}${PLUGIN_API}/analyze-jar`, {
     method: "POST",
     body: form,
   });
@@ -254,7 +254,7 @@ export async function analyzePluginJar(port: number, file: File): Promise<Plugin
   return payload.data as PluginCandidate;
 }
 
-export async function analyzePluginMaven(port: number, pomXml: string): Promise<PluginCandidate[]> {
+export async function analyzePluginMaven(port: number | ConnectionProfile, pomXml: string): Promise<PluginCandidate[]> {
   const result = await request<PluginCandidate[]>(port, `${PLUGIN_API}/analyze-maven`, {
     method: "POST",
     body: JSON.stringify({ pomXml }),
@@ -262,7 +262,7 @@ export async function analyzePluginMaven(port: number, pomXml: string): Promise<
   return Array.isArray(result) ? result : [];
 }
 
-export async function installPlugin(port: number, candidate: PluginCandidate): Promise<void> {
+export async function installPlugin(port: number | ConnectionProfile, candidate: PluginCandidate): Promise<void> {
   await request(port, `${PLUGIN_API}/install`, {
     method: "POST",
     body: JSON.stringify({
@@ -276,32 +276,32 @@ export async function installPlugin(port: number, candidate: PluginCandidate): P
   });
 }
 
-export async function activatePlugin(port: number, pluginId: string): Promise<void> {
+export async function activatePlugin(port: number | ConnectionProfile, pluginId: string): Promise<void> {
   await request(port, `${PLUGIN_API}/activate`, {
     method: "POST",
     body: JSON.stringify({ pluginId }),
   });
 }
 
-export async function enablePlugin(port: number, pluginId: string): Promise<void> {
+export async function enablePlugin(port: number | ConnectionProfile, pluginId: string): Promise<void> {
   await request(port, `${PLUGIN_API}/${encodeURIComponent(pluginId)}/enable`, {
     method: "POST",
   });
 }
 
-export async function disablePlugin(port: number, pluginId: string): Promise<void> {
+export async function disablePlugin(port: number | ConnectionProfile, pluginId: string): Promise<void> {
   await request(port, `${PLUGIN_API}/${encodeURIComponent(pluginId)}/disable`, {
     method: "POST",
   });
 }
 
-export async function uninstallPlugin(port: number, pluginId: string): Promise<void> {
+export async function uninstallPlugin(port: number | ConnectionProfile, pluginId: string): Promise<void> {
   await request(port, `${PLUGIN_API}/${encodeURIComponent(pluginId)}/uninstall`, {
     method: "POST",
   });
 }
 
-export async function listPluginConfig(port: number, pluginId: string): Promise<PluginConfigItem[]> {
+export async function listPluginConfig(port: number | ConnectionProfile, pluginId: string): Promise<PluginConfigItem[]> {
   const result = await request<PluginConfigItem[]>(
     port,
     `${PLUGIN_API}/${encodeURIComponent(pluginId)}/config`,
@@ -310,7 +310,7 @@ export async function listPluginConfig(port: number, pluginId: string): Promise<
 }
 
 export async function savePluginConfig(
-  port: number,
+  port: number | ConnectionProfile,
   pluginId: string,
   configs: PluginConfigItem[],
 ): Promise<void> {
@@ -350,14 +350,14 @@ export class StreamIdleError extends Error {
  * 前端"停止"只断开 SSE 连接，服务端的当前轮会继续跑完并占用流式线程。
  * 调用该接口让服务端在安全点（LLM 分片间隙/工具边界）中断当前轮，及时释放线程。
  */
-export async function cancelAgentRun(port: number, agentId: string): Promise<void> {
+export async function cancelAgentRun(port: number | ConnectionProfile, agentId: string): Promise<void> {
   await request(port, `/api/agent/${encodeURIComponent(agentId)}/cancel`, {
     method: "POST",
   });
 }
 
 export async function streamAgentMessage(
-  port: number,
+  port: number | ConnectionProfile,
   body: {
     agentId: string;
     message: string;
@@ -378,12 +378,12 @@ export async function streamAgentMessage(
   // 连接阶段加超时：WKWebView 的 window.fetch 偶发挂断（请求到服务端但响应不返回），
   // 不加超时会让整个流式调用永久挂起
   const response = await Promise.race([
-    httpFetch(`${baseUrl(port)}/api/agent/stream`, localAuthInit(`${baseUrl(port)}/api/agent/stream`, {
+    httpFetch(`${connection_base_url(port)}/api/agent/stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
       signal,
-    })),
+    }),
     new Promise<never>((_, reject) => window.setTimeout(
       () => reject(new Error("流式连接超时（15s）")), 15_000,
     )),
@@ -413,7 +413,9 @@ export async function streamAgentMessage(
     if (!raw) return;
     try {
       const payload = JSON.parse(raw);
-      onEvent({ type: (name || "chunk") as StreamEvent["type"], payload });
+      const type = (name || "chunk") as StreamEvent["type"];
+      if (!is_known_stream_event(type)) return;
+      onEvent({ type, payload });
     } catch {
       onEvent({ type: "chunk", payload: { text: raw } });
     }
@@ -532,7 +534,7 @@ export type ExtensionCliConfig = {
   effectiveNotice: string;
 };
 
-export async function listExtensionSkills(port: number): Promise<ExtensionSkillSummary[]> {
+export async function listExtensionSkills(port: number | ConnectionProfile): Promise<ExtensionSkillSummary[]> {
   return request<ExtensionSkillSummary[]>(port, "/api/harness/extensions/skills");
 }
 
@@ -544,7 +546,7 @@ export type ExtensionSkillInstallResult = {
 };
 
 export async function installExtensionSkill(
-  port: number,
+  port: number | ConnectionProfile,
   gitUrl: string,
   subdir?: string,
   name?: string,
@@ -556,7 +558,7 @@ export async function installExtensionSkill(
 }
 
 export async function uploadExtensionSkillZip(
-  port: number,
+  port: number | ConnectionProfile,
   file: File,
   subdir?: string,
   name?: string,
@@ -565,10 +567,10 @@ export async function uploadExtensionSkillZip(
   form.append("file", file);
   if (subdir) form.append("subdir", subdir);
   if (name) form.append("name", name);
-  const response = await fetch(`${baseUrl(port)}/api/harness/extensions/skills/upload`, localAuthInit(`${baseUrl(port)}/api/harness/extensions/skills/upload`, {
+  const response = await httpFetch(`${connection_base_url(port)}/api/harness/extensions/skills/upload`, {
     method: "POST",
     body: form,
-  }));
+  });
   const payload = (await response.json().catch(() => null)) as ApiEnvelope<ExtensionSkillInstallResult> | null;
   if (!response.ok || payload?.code !== "00000") {
     throw new Error(payload?.info || `技能压缩包上传失败：HTTP ${response.status}`);
@@ -576,25 +578,25 @@ export async function uploadExtensionSkillZip(
   return payload.data as ExtensionSkillInstallResult;
 }
 
-export async function setExtensionSkillEnabled(port: number, name: string, enabled: boolean): Promise<boolean> {
+export async function setExtensionSkillEnabled(port: number | ConnectionProfile, name: string, enabled: boolean): Promise<boolean> {
   return request<boolean>(port, `/api/harness/extensions/skills/${encodeURIComponent(name)}/enabled`, {
     method: "POST",
     body: JSON.stringify({ enabled }),
   });
 }
 
-export async function removeExtensionSkill(port: number, name: string): Promise<boolean> {
+export async function removeExtensionSkill(port: number | ConnectionProfile, name: string): Promise<boolean> {
   return request<boolean>(port, `/api/harness/extensions/skills/${encodeURIComponent(name)}`, {
     method: "DELETE",
   });
 }
 
-export async function listMcpServers(port: number): Promise<ExtensionMcpServer[]> {
+export async function listMcpServers(port: number | ConnectionProfile): Promise<ExtensionMcpServer[]> {
   return request<ExtensionMcpServer[]>(port, "/api/harness/extensions/mcp/servers");
 }
 
 export async function upsertMcpServer(
-  port: number,
+  port: number | ConnectionProfile,
   server: Partial<ExtensionMcpServer>,
 ): Promise<ExtensionMcpApplyResult> {
   return request<ExtensionMcpApplyResult>(port, "/api/harness/extensions/mcp/servers", {
@@ -604,7 +606,7 @@ export async function upsertMcpServer(
 }
 
 export async function testMcpServer(
-  port: number,
+  port: number | ConnectionProfile,
   server: Partial<ExtensionMcpServer>,
 ): Promise<ExtensionMcpApplyResult> {
   return request<ExtensionMcpApplyResult>(port, "/api/harness/extensions/mcp/servers/test", {
@@ -613,17 +615,17 @@ export async function testMcpServer(
   });
 }
 
-export async function removeMcpServer(port: number, name: string): Promise<boolean> {
+export async function removeMcpServer(port: number | ConnectionProfile, name: string): Promise<boolean> {
   return request<boolean>(port, `/api/harness/extensions/mcp/servers/${encodeURIComponent(name)}`, {
     method: "DELETE",
   });
 }
 
-export async function getExtensionCliConfig(port: number): Promise<ExtensionCliConfig> {
+export async function getExtensionCliConfig(port: number | ConnectionProfile): Promise<ExtensionCliConfig> {
   return request<ExtensionCliConfig>(port, "/api/harness/extensions/cli");
 }
 
-export async function setExtensionCliConfig(port: number, config: ExtensionCliConfig): Promise<ExtensionCliConfig> {
+export async function setExtensionCliConfig(port: number | ConnectionProfile, config: ExtensionCliConfig): Promise<ExtensionCliConfig> {
   return request<ExtensionCliConfig>(port, "/api/harness/extensions/cli", {
     method: "PUT",
     body: JSON.stringify(config),
@@ -671,54 +673,54 @@ export type FeishuBotSaveInput = {
   groupRequireMention?: boolean;
 };
 
-export async function listBots(port: number): Promise<FeishuBot[]> {
+export async function listBots(port: number | ConnectionProfile): Promise<FeishuBot[]> {
   return request<FeishuBot[]>(port, "/api/harness/bots");
 }
 
-export async function startBotPairing(port: number, botName?: string, agentBaseId?: string): Promise<FeishuPairing> {
+export async function startBotPairing(port: number | ConnectionProfile, botName?: string, agentBaseId?: string): Promise<FeishuPairing> {
   return request<FeishuPairing>(port, "/api/harness/bots/pairing", {
     method: "POST",
     body: JSON.stringify({ botName, agentBaseId }),
   });
 }
 
-export async function getBotPairing(port: number, pairingId: string): Promise<FeishuPairing> {
+export async function getBotPairing(port: number | ConnectionProfile, pairingId: string): Promise<FeishuPairing> {
   return request<FeishuPairing>(port, `/api/harness/bots/pairing/${encodeURIComponent(pairingId)}`);
 }
 
-export async function cancelBotPairing(port: number, pairingId: string): Promise<void> {
+export async function cancelBotPairing(port: number | ConnectionProfile, pairingId: string): Promise<void> {
   await request<void>(port, `/api/harness/bots/pairing/${encodeURIComponent(pairingId)}`, {
     method: "DELETE",
   });
 }
 
-export async function saveBot(port: number, input: FeishuBotSaveInput): Promise<FeishuBot> {
+export async function saveBot(port: number | ConnectionProfile, input: FeishuBotSaveInput): Promise<FeishuBot> {
   return request<FeishuBot>(port, "/api/harness/bots", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
-export async function updateBot(port: number, botId: string, input: FeishuBotSaveInput): Promise<FeishuBot> {
+export async function updateBot(port: number | ConnectionProfile, botId: string, input: FeishuBotSaveInput): Promise<FeishuBot> {
   return request<FeishuBot>(port, `/api/harness/bots/${encodeURIComponent(botId)}`, {
     method: "PUT",
     body: JSON.stringify(input),
   });
 }
 
-export async function deleteBot(port: number, botId: string): Promise<void> {
+export async function deleteBot(port: number | ConnectionProfile, botId: string): Promise<void> {
   await request<void>(port, `/api/harness/bots/${encodeURIComponent(botId)}`, {
     method: "DELETE",
   });
 }
 
-export async function setBotEnabled(port: number, botId: string, enabled: boolean): Promise<FeishuBot> {
+export async function setBotEnabled(port: number | ConnectionProfile, botId: string, enabled: boolean): Promise<FeishuBot> {
   return request<FeishuBot>(port, `/api/harness/bots/${encodeURIComponent(botId)}/${enabled ? "enable" : "disable"}`, {
     method: "POST",
   });
 }
 
-export async function testBot(port: number, botId: string): Promise<FeishuBot> {
+export async function testBot(port: number | ConnectionProfile, botId: string): Promise<FeishuBot> {
   return request<FeishuBot>(port, `/api/harness/bots/${encodeURIComponent(botId)}/test`, {
     method: "POST",
   });

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { native_invoke } from "../platform/native";
 import {
   ChevronIcon,
   FileIcon,
@@ -105,7 +105,7 @@ async function compressChain(entry: DirEntryItem, showHidden: boolean, budget: {
     budget.reads += 1;
     let listing: DirListing;
     try {
-      listing = await invoke<DirListing>("list_directory", { path: current.path, showHidden });
+      listing = await native_invoke<DirListing>("list_directory", { path: current.path, showHidden });
     } catch {
       break;
     }
@@ -119,7 +119,7 @@ async function compressChain(entry: DirEntryItem, showHidden: boolean, budget: {
 }
 
 /**
- * 惰性目录树：只在目录被展开时才读取该层内容（invoke list_directory），
+ * 惰性目录树：只在目录被展开时才读取该层内容（native_invoke list_directory），
  * 已加载的层缓存在 ref 里，折叠/再展开不重复 IO；折叠时子树整体卸载出 DOM。
  * 单子目录链在加载层时顺带压缩（链上每段是一次廉价 readdir，有预算上限）。
  * 工具栏：收回面板 / 搜索（递归扫描 + 点击回跳定位）/ 类型筛选（含显示 . 文件）。
@@ -154,7 +154,7 @@ const DirTreeView = memo(function DirTreeView({ rootPath, onOpenFile, onCollapse
     if (childrenCacheRef.current.has(dirPath)) return;
     setLoading((prev) => new Set(prev).add(dirPath));
     try {
-      const listing = await invoke<DirListing>("list_directory", {
+      const listing = await native_invoke<DirListing>("list_directory", {
         path: dirPath,
         showHidden: hiddenFlagRef.current,
       });
@@ -226,7 +226,7 @@ const DirTreeView = memo(function DirTreeView({ rootPath, onOpenFile, onCollapse
   }, [showHidden, expanded, loadDir]);
 
   const revealFile = useCallback((path: string) => {
-    void invoke("reveal_local_file", { path })
+    void native_invoke("reveal_local_file", { path })
       .then(() => {
         setRevealedPath(path);
         window.setTimeout(() => setRevealedPath(""), 1200);
@@ -260,7 +260,7 @@ const DirTreeView = memo(function DirTreeView({ rootPath, onOpenFile, onCollapse
           const next = queue.shift()!;
           let listing: DirListing;
           try {
-            listing = await invoke<DirListing>("list_directory", {
+            listing = await native_invoke<DirListing>("list_directory", {
               path: next.path,
               showHidden: hiddenFlagRef.current,
             });

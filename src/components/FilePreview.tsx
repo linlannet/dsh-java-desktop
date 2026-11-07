@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { native_invoke } from "../platform/native";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import hljs from "highlight.js/lib/common";
@@ -358,7 +358,7 @@ function FilePreviewBody({ path, name, onClose, onCollapse, onToggleMaximize, ma
     let cancelled = false;
     let last = "";
     const poll = () => {
-      void invoke<{ mtimeMs: number; size: number } | null>("local_file_stamp", { path })
+      void native_invoke<{ mtimeMs: number; size: number } | null>("local_file_stamp", { path })
         .then((stamp) => {
           if (cancelled || !stamp) return;
           const key = `${stamp.mtimeMs}:${stamp.size}`;
@@ -400,18 +400,18 @@ function FilePreviewBody({ path, name, onClose, onCollapse, onToggleMaximize, ma
     void (async () => {
       try {
         if (kind === "docx" || kind === "xlsx" || kind === "image" || kind === "pdf" || kind === "html" || kind === "binary") {
-          const base64 = await invoke<string>("read_local_file_base64", { path });
+          const base64 = await native_invoke<string>("read_local_file_base64", { path });
           if (cancelled) return;
           setBinary(base64);
           // docx/xlsx 需要解析库，动态加载（二进制先存着，交给 lib 渲染）
         } else {
           try {
-            const content = await invoke<string>("read_local_text_file", { path });
+            const content = await native_invoke<string>("read_local_text_file", { path });
             if (cancelled) return;
             setText(content);
           } catch (textError) {
             // 无扩展名的二进制（非法 UTF-8）等：降级为十六进制视图而不是报错
-            const base64 = await invoke<string>("read_local_file_base64", { path });
+            const base64 = await native_invoke<string>("read_local_file_base64", { path });
             if (cancelled) return;
             setBinary(base64);
             setBinaryFallback(true);
@@ -888,8 +888,8 @@ export function InlineFileCards({ content, onOpenFile, basePath, onAddCodeSnippe
     const candidateLists = rawPaths.map((raw) => resolvePathCandidates(raw, basePath));
     const allCandidates = candidateLists.flat();
     void Promise.all([
-      invoke<string[]>("existing_local_files", { paths: allCandidates }).catch(() => [] as string[]),
-      invoke<(number | null)[]>("local_file_metas", { paths: allCandidates }).catch(() => [] as (number | null)[]),
+      native_invoke<string[]>("existing_local_files", { paths: allCandidates }).catch(() => [] as string[]),
+      native_invoke<(number | null)[]>("local_file_metas", { paths: allCandidates }).catch(() => [] as (number | null)[]),
     ]).then(([existingList, sizeList]) => {
       if (cancelled) return;
       const existingSet = new Set(existingList);

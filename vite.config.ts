@@ -3,6 +3,8 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
+  // 相对基址：同一份产物需在站点根、子目录、Tauri 移动端 WebView、鸿蒙 rawfile 下均可加载
+  base: "./",
   clearScreen: false,
   // 构建时间戳：注入前端产物，用于核对「运行中的 App 是否包含本次修复」——
   // 打包 App 内嵌的是构建时的 dist，改代码不重新打包就永远跑旧代码（2026-09-20 教训）
