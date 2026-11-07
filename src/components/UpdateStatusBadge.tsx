@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getVersion } from "@tauri-apps/api/app";
-import { check } from "@tauri-apps/plugin-updater";
+import { app_version } from "../platform/native";
+import { update_check } from "../platform/native";
 
 type UpdateStatus =
   | { kind: "checking" }
@@ -15,13 +15,13 @@ export default function UpdateStatusBadge() {
   useEffect(() => {
     let cancelled = false;
 
-    getVersion()
+    app_version()
       .then((version) => {
         if (!cancelled) setCurrentVersion(version);
       })
       .catch(() => undefined);
 
-    void check()
+    void update_check()
       .then((update) => {
         if (cancelled) return;
         setStatus(update ? { kind: "available", version: update.version } : { kind: "latest" });

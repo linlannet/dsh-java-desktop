@@ -1,6 +1,8 @@
+import { storage_get, storage_set } from "./platform/storage";
+import { install_keyboard_inset } from "./platform/viewport";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { native_invoke, lifecycle } from "./platform/native";
+
 import ConversationView from "./components/ConversationView";
 import Sidebar, { sessionIsToday, type WorkspaceView } from "./components/Sidebar";
 import SettingsView, { type SettingsSection } from "./components/SettingsView";
@@ -132,7 +134,7 @@ async function verifyRoomAccepted(port: number, roomId: string): Promise<boolean
 }
 
 function readSidebarWidth(): number {
-  const stored = Number(localStorage.getItem("dsh-sidebar-width"));
+  const stored = Number(storage_get("dsh-sidebar-width"));
   if (!Number.isFinite(stored) || stored <= 0) return SIDEBAR_DEFAULT_WIDTH;
   // 收起已改为显式状态（dsh-sidebar-collapsed），历史遗留的窄宽度直接归位到默认宽度
   if (stored <= SIDEBAR_COLLAPSE_THRESHOLD) return SIDEBAR_DEFAULT_WIDTH;
@@ -140,7 +142,7 @@ function readSidebarWidth(): number {
 }
 
 function readSidebarCollapsed(): boolean {
-  return localStorage.getItem("dsh-sidebar-collapsed") === "1";
+  return storage_get("dsh-sidebar-collapsed") === "1";
 }
 
 type ProjectEditTarget = {
@@ -221,7 +223,7 @@ const DOCX_TEXT_CONTEXT_LIMIT = 120_000;
  */
 async function extractDocxText(path: string): Promise<string | undefined> {
   try {
-    const base64 = await invoke<string>("read_local_file_base64", { path });
+    const base64 = await native_invoke<string>("read_local_file_base64", { path });
     const mammoth = await import("mammoth/mammoth.browser");
     const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
     const result = await mammoth.extractRawText({ arrayBuffer: bytes.buffer });
@@ -307,7 +309,7 @@ function dedupeResources(resources: ComposerResource[]): ComposerResource[] {
 
 function readDraftSessions(): SessionSummary[] {
   try {
-    const drafts = JSON.parse(localStorage.getItem("dsh-draft-sessions") || "[]");
+    const drafts = JSON.parse(storage_get("dsh-draft-sessions") || "[]");
     return Array.isArray(drafts) ? drafts.filter((item): item is SessionSummary => Boolean(item && typeof item === "object")) : [];
   } catch {
     return [];
@@ -317,7 +319,7 @@ function readDraftSessions(): SessionSummary[] {
 /** 用户手动改过的会话标题：{ 任一 sessionId/agentId: 标题 }，优先于服务端 title 展示。 */
 function readCustomSessionTitles(): Record<string, string> {
   try {
-    const raw = JSON.parse(localStorage.getItem("dsh-session-custom-titles") || "{}");
+    const raw = JSON.parse(storage_get("dsh-session-custom-titles") || "{}");
     if (!raw || typeof raw !== "object") return {};
     const cleaned: Record<string, string> = {};
     for (const [id, title] of Object.entries(raw as Record<string, unknown>)) {
@@ -332,7 +334,7 @@ function readCustomSessionTitles(): Record<string, string> {
 /** 前端本地删除（隐藏）的会话 id 列表；服务端暂无删除接口，靠它在列表中过滤。 */
 function readHiddenSessionIds(): string[] {
   try {
-    const raw = JSON.parse(localStorage.getItem("dsh-hidden-session-ids") || "[]");
+    const raw = JSON.parse(storage_get("dsh-hidden-session-ids") || "[]");
     return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string" && Boolean(id)) : [];
   } catch {
     return [];
@@ -374,22 +376,22 @@ function mergeStreamText(current: string, incoming: string): string {
 }
 
 function readApprovalMode(): ApprovalMode {
-  const value = localStorage.getItem("dsh-approval-mode");
+  const value = storage_get("dsh-approval-mode");
   return value === "AUTO_APPROVE" || value === "FULL_OPEN" ? value : "REQUEST_APPROVAL";
 }
 
 function readReasoningEffort(): ReasoningEffort {
-  const value = localStorage.getItem("dsh-reasoning-effort");
+  const value = storage_get("dsh-reasoning-effort");
   return value === "low" || value === "high" ? value : "medium";
 }
 
 function readActiveProjectPath(): string {
-  return localStorage.getItem("dsh-active-project-path") || "";
+  return storage_get("dsh-active-project-path") || "";
 }
 
 function readProjectOrder(): string[] {
   try {
-    const value = JSON.parse(localStorage.getItem("dsh-project-order") || "[]");
+    const value = JSON.parse(storage_get("dsh-project-order") || "[]");
     return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
   } catch {
     return [];
@@ -398,7 +400,7 @@ function readProjectOrder(): string[] {
 
 function readSessionOrder(): Record<string, string[]> {
   try {
-    const value = JSON.parse(localStorage.getItem("dsh-session-order") || "{}");
+    const value = JSON.parse(storage_get("dsh-session-order") || "{}");
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
     const next: Record<string, string[]> = {};
     for (const [projectPath, ids] of Object.entries(value)) {
@@ -414,7 +416,7 @@ function readSessionOrder(): Record<string, string[]> {
 
 function readPinnedSessionIds(): string[] {
   try {
-    const value = JSON.parse(localStorage.getItem("dsh-session-pinned") || "[]");
+    const value = JSON.parse(storage_get("dsh-session-pinned") || "[]");
     return Array.isArray(value)
       ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
       : [];
@@ -426,7 +428,7 @@ function readPinnedSessionIds(): string[] {
 /** 未读会话（别名 id → 结束状态）：后台运行结束后用户尚未查看的会话 */
 function readUnreadSessions(): Record<string, "done" | "error"> {
   try {
-    const value = JSON.parse(localStorage.getItem("dsh-session-unread") || "{}") as Record<string, unknown>;
+    const value = JSON.parse(storage_get("dsh-session-unread") || "{}") as Record<string, unknown>;
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
     const next: Record<string, "done" | "error"> = {};
     for (const [id, status] of Object.entries(value)) {
@@ -440,7 +442,7 @@ function readUnreadSessions(): Record<string, "done" | "error"> {
 
 function readLocalProjects(): WorkspaceEntry[] {
   try {
-    const value = JSON.parse(localStorage.getItem("dsh-local-projects") || "[]");
+    const value = JSON.parse(storage_get("dsh-local-projects") || "[]");
     if (!Array.isArray(value)) return [];
     return value.filter((project): project is WorkspaceEntry => (
       project
@@ -455,7 +457,7 @@ function readLocalProjects(): WorkspaceEntry[] {
 
 function readSessionProjectMap(): Record<string, string> {
   try {
-    const storedMap = JSON.parse(localStorage.getItem("dsh-session-project-map") || "{}") as Record<string, unknown>;
+    const storedMap = JSON.parse(storage_get("dsh-session-project-map") || "{}") as Record<string, unknown>;
     if (!storedMap || typeof storedMap !== "object" || Array.isArray(storedMap)) return {};
     const cleanedMap: Record<string, string> = {};
     for (const [id, path] of Object.entries(storedMap)) {
@@ -465,7 +467,7 @@ function readSessionProjectMap(): Record<string, string> {
       else if (path === "default") cleanedMap[id] = "default";
     }
     if (Object.keys(cleanedMap).length !== Object.keys(storedMap).length) {
-      localStorage.setItem("dsh-session-project-map", JSON.stringify(cleanedMap));
+      storage_set("dsh-session-project-map", JSON.stringify(cleanedMap));
     }
     return cleanedMap;
   } catch {
@@ -493,7 +495,7 @@ function idsOfSession(session?: SessionSummary | null): string[] {
 
 function readSessionMessages(sessionId: string): ConversationMessage[] {
   try {
-    const cache = JSON.parse(localStorage.getItem("dsh-session-messages") || "{}");
+    const cache = JSON.parse(storage_get("dsh-session-messages") || "{}");
     const messages = cache[sessionId];
     return Array.isArray(messages) ? messages : [];
   } catch {
@@ -570,9 +572,9 @@ function mergeAttributionFromCache(
 
 function writeSessionMessages(sessionId: string, messages: ConversationMessage[]) {
   try {
-    const cache = JSON.parse(localStorage.getItem("dsh-session-messages") || "{}");
+    const cache = JSON.parse(storage_get("dsh-session-messages") || "{}");
     cache[sessionId] = messages;
-    localStorage.setItem("dsh-session-messages", JSON.stringify(cache));
+    storage_set("dsh-session-messages", JSON.stringify(cache));
   } catch {
     return;
   }
@@ -582,7 +584,7 @@ const PROMPT_HISTORY_LIMIT = 100;
 
 function readPromptHistory(): string[] {
   try {
-    const history = JSON.parse(localStorage.getItem("dsh-prompt-history") || "[]");
+    const history = JSON.parse(storage_get("dsh-prompt-history") || "[]");
     return Array.isArray(history)
       ? history.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).slice(-PROMPT_HISTORY_LIMIT)
       : [];
@@ -735,9 +737,10 @@ function messagesFromPayload(payload: unknown): ConversationMessage[] | null {
 }
 
 export default function App() {
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState<WorkspaceView>("conversation");
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
-  // 侧边栏收起为显式状态：按钮切换 + 拖边条到最左联动，持久化到 localStorage
+  // 侧边栏收起为显式状态：按钮切换 + 拖边条到最左联动，持久化到 本地存储
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [service, setService] = useState<AgentServiceState | null>(null);
@@ -761,8 +764,8 @@ export default function App() {
   // 未读会话（存所有别名 id → "done" | "error"）：运行结束后用户没在看的会话，
   // 侧边栏会话行显示未读圆点，点开或窗口聚焦回该会话时清除
   const [unreadSessions, setUnreadSessions] = useState<Record<string, "done" | "error">>(readUnreadSessions);
-  const [activeSessionId, setActiveSessionId] = useState(() => localStorage.getItem("dsh-active-session-id") || newSessionId());
-  const [messages, setMessages] = useState<ConversationMessage[]>(() => readSessionMessages(localStorage.getItem("dsh-active-session-id") || ""));
+  const [activeSessionId, setActiveSessionId] = useState(() => storage_get("dsh-active-session-id") || newSessionId());
+  const [messages, setMessages] = useState<ConversationMessage[]>(() => readSessionMessages(storage_get("dsh-active-session-id") || ""));
   const [approvals, setApprovals] = useState<RuntimeApproval[]>([]);
   // 已安装的 Skills 技能（扩展能力设置里管理的同一份）：供输入框 + 菜单选择注入对话
   const [extensionSkills, setExtensionSkills] = useState<ExtensionSkillSummary[]>([]);
@@ -786,7 +789,7 @@ export default function App() {
     setPromptHistory((current) => {
       const next = [...current.filter((item) => item !== trimmed), trimmed].slice(-PROMPT_HISTORY_LIMIT);
       try {
-        localStorage.setItem("dsh-prompt-history", JSON.stringify(next));
+        storage_set("dsh-prompt-history", JSON.stringify(next));
       } catch {
         // 存储失败不影响主流程
       }
@@ -839,6 +842,8 @@ export default function App() {
   const [activeDockTab, setActiveDockTab] = useState<string>("collab");
   // 最近一次的面板级 Tab（collab/info）：关闭产物/文件 Tab 后回退到这里，而不是把 Dock 收光
   const lastPanelTabRef = useRef<string>("collab");
+  useEffect(() => install_keyboard_inset(), []);
+
   useEffect(() => {
     if (activeDockTab === "collab" || activeDockTab === "info") {
       lastPanelTabRef.current = activeDockTab;
@@ -861,13 +866,13 @@ export default function App() {
   useEffect(() => {
     if (!dockOpen || !activeDockTab.startsWith("file:")) setFileMaximized(false);
   }, [dockOpen, activeDockTab]);
-  // 分屏时目录树面板宽度（localStorage 持久化，拖拽中间分隔条调整）
+  // 分屏时目录树面板宽度（本地存储 持久化，拖拽中间分隔条调整）
   const [treeSplitWidth, setTreeSplitWidth] = useState(() => {
-    const stored = Number(window.localStorage.getItem("dsh:tree-split-width"));
+    const stored = Number(storage_get("dsh:tree-split-width"));
     return Number.isFinite(stored) && stored >= 180 && stored <= 520 ? stored : 264;
   });
   useEffect(() => {
-    window.localStorage.setItem("dsh:tree-split-width", String(treeSplitWidth));
+    storage_set("dsh:tree-split-width", String(treeSplitWidth));
   }, [treeSplitWidth]);
   const [humanMentions, setHumanMentions] = useState<DigitalHuman[]>([]);
   const [activeHumanId, setActiveHumanId] = useState("");
@@ -894,7 +899,7 @@ export default function App() {
   const appShellStyle = { "--sidebar-width": `${sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth}px` } as CSSProperties & Record<string, string>;
 
   useEffect(() => {
-    localStorage.setItem("dsh-sidebar-collapsed", sidebarCollapsed ? "1" : "0");
+    storage_set("dsh-sidebar-collapsed", sidebarCollapsed ? "1" : "0");
   }, [sidebarCollapsed]);
 
   /** 收起/展开按钮：展开时若宽度还停在收起阈值以下，先归位到默认宽度 */
@@ -951,7 +956,7 @@ export default function App() {
   }, [sidebarCollapsed, sidebarWidth]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-sidebar-width", String(sidebarWidth));
+    storage_set("dsh-sidebar-width", String(sidebarWidth));
   }, [sidebarWidth]);
   // 首次用户手势时解锁音频上下文：webview 自动播放策略要求 AudioContext 在
   // 用户交互里创建/resume，否则对话完成时播放提示音可能被静默拦截
@@ -1113,8 +1118,7 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
     try {
-      const win = getCurrentWindow();
-      void win.onFocusChanged(({ payload: focused }) => {
+      void lifecycle.on_focus_changed((focused) => {
         if (focused) clearActiveSessionUnreadRef.current();
       })
         .then((fn) => {
@@ -1648,7 +1652,7 @@ export default function App() {
   useEffect(() => {
     setLocalProjects(readLocalProjects());
     // 启动时如果 activeSessionId 不在草稿列表里（比如上次是点项目/会话后直接退出的，
-    // 或 localStorage 被清过但 active id 还留着），补登记一条归属默认工作区的草稿。
+    // 或 本地存储 被清过但 active id 还留着），补登记一条归属默认工作区的草稿。
     // 否则这个 id 在侧栏里不可见，「新对话」的复用判断也找不到它，点了就像没反应。
     setDraftSessions((current) => {
       if (current.some((session) => session.agentId === activeSessionId || session.sessionId === activeSessionId)) {
@@ -1664,13 +1668,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("dsh-active-session-id", activeSessionId);
+    storage_set("dsh-active-session-id", activeSessionId);
     activeSessionRef.current = activeSessionId;
   }, [activeSessionId]);
 
   useEffect(() => {
     activeProjectPathRef.current = activeProjectPath;
-    localStorage.setItem("dsh-active-project-path", activeProjectPath);
+    storage_set("dsh-active-project-path", activeProjectPath);
   }, [activeProjectPath]);
 
   useEffect(() => {
@@ -1690,7 +1694,7 @@ export default function App() {
   }, [activeSessionId, messages]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-session-project-map", JSON.stringify(sessionProjectMap));
+    storage_set("dsh-session-project-map", JSON.stringify(sessionProjectMap));
   }, [sessionProjectMap]);
 
   useEffect(() => {
@@ -1698,27 +1702,27 @@ export default function App() {
   }, [activeSessionId, messages]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-local-projects", JSON.stringify(localProjects));
+    storage_set("dsh-local-projects", JSON.stringify(localProjects));
   }, [localProjects]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-project-order", JSON.stringify(projectOrder));
+    storage_set("dsh-project-order", JSON.stringify(projectOrder));
   }, [projectOrder]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-session-order", JSON.stringify(sessionOrder));
+    storage_set("dsh-session-order", JSON.stringify(sessionOrder));
   }, [sessionOrder]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-session-pinned", JSON.stringify(pinnedSessionIds));
+    storage_set("dsh-session-pinned", JSON.stringify(pinnedSessionIds));
   }, [pinnedSessionIds]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-session-unread", JSON.stringify(unreadSessions));
+    storage_set("dsh-session-unread", JSON.stringify(unreadSessions));
   }, [unreadSessions]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-draft-sessions", JSON.stringify(draftSessions));
+    storage_set("dsh-draft-sessions", JSON.stringify(draftSessions));
   }, [draftSessions]);
 
   // 清理僵尸 draft：id 与服务端会话撞车被去重过滤、永远不可见的草稿，
@@ -1741,19 +1745,19 @@ export default function App() {
   }, [draftSessions, sessions]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-session-custom-titles", JSON.stringify(customSessionTitles));
+    storage_set("dsh-session-custom-titles", JSON.stringify(customSessionTitles));
   }, [customSessionTitles]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-hidden-session-ids", JSON.stringify(hiddenSessionIds));
+    storage_set("dsh-hidden-session-ids", JSON.stringify(hiddenSessionIds));
   }, [hiddenSessionIds]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-approval-mode", approvalMode);
+    storage_set("dsh-approval-mode", approvalMode);
   }, [approvalMode]);
 
   useEffect(() => {
-    localStorage.setItem("dsh-reasoning-effort", reasoningEffort);
+    storage_set("dsh-reasoning-effort", reasoningEffort);
   }, [reasoningEffort]);
 
   const connectService = useCallback(async (focusModelsIfEmpty = false) => {
@@ -1763,7 +1767,7 @@ export default function App() {
     setServiceBoot({ stage: "正在检查智能体服务状态", progress: 6 });
     let lastError = "智能体服务启动失败";
     try {
-      const existingState = await invoke<AgentServiceState>("agent_status");
+      const existingState = await native_invoke<AgentServiceState>("agent_status");
       setService(existingState);
       // D-04 本机鉴权：把 Rust 壳注入 JAR 的 key 同步给 HTTP 层（null = 无鉴权模式）
       setLocalApiKey(existingState.apiKey);
@@ -1784,7 +1788,7 @@ export default function App() {
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
           setServiceBoot({ stage: "正在检查 Java Runtime 并定位智能体 JAR", progress: 14 });
-          const state = await invoke<AgentServiceState>("start_agent");
+          const state = await native_invoke<AgentServiceState>("start_agent");
           if (!state.port) throw new Error(state.message || "服务启动失败");
           setService(state);
           setLocalApiKey(state.apiKey);
@@ -1804,7 +1808,7 @@ export default function App() {
           lastError = caught instanceof Error ? caught.message : String(caught);
           if (attempt < 1) {
             setServiceBoot({ stage: "本次启动未成功，正在清理并准备重试", progress: 10 });
-            await invoke("stop_agent").catch(() => undefined);
+            await native_invoke("stop_agent").catch(() => undefined);
             await new Promise((resolve) => setTimeout(resolve, 1_000));
           }
         }
@@ -1835,7 +1839,7 @@ export default function App() {
     let cancelled = false;
     const checkService = async () => {
       try {
-        const state = await invoke<AgentServiceState>("agent_status");
+        const state = await native_invoke<AgentServiceState>("agent_status");
         if (cancelled) return;
         setLocalApiKey(state.apiKey);
         if (state.status !== "running") {
@@ -1962,8 +1966,8 @@ export default function App() {
     return [...aliasSet];
   }, []);
 
-  // ── localStorage 持久化节流 ──
-  // 流式期间每个 chunk 都全量序列化写 localStorage，长对话会阻塞主线程并加剧闪烁；
+  // ── 本地存储 持久化节流 ──
+  // 流式期间每个 chunk 都全量序列化写 本地存储，长对话会阻塞主线程并加剧闪烁；
   // 改为按会话合并：最多 800ms 落盘一次，done/换会话/页面隐藏时强制 flush
   const persistTimersRef = useRef<Map<string, number>>(new Map());
   const persistSessionMessages = useCallback((sessionId: string) => {
@@ -2027,7 +2031,7 @@ export default function App() {
     const body = run?.title
       ? (failed ? `「${run.title}」：${errorMessage || "执行失败"}` : `「${run.title}」已生成回复`)
       : (failed ? (errorMessage || "执行失败") : "已生成回复");
-    void invoke("send_notification", { title, body }).catch(() => undefined);
+    void native_invoke("send_notification", { title, body }).catch(() => undefined);
   }, [isViewingSession, markSessionUnread]);
 
   const selectSession = useCallback(async (sessionId: string) => {
@@ -2161,7 +2165,7 @@ export default function App() {
 
   const pickResourceFolder = useCallback(async () => {
     try {
-      const selected = await invoke<WorkspaceEntry[]>("pick_local_directory");
+      const selected = await native_invoke<WorkspaceEntry[]>("pick_local_directory");
       for (const entry of selected || []) {
         if (!entry.path) continue;
         addDraftResource({
@@ -2178,11 +2182,11 @@ export default function App() {
 
   const pickResourceFile = useCallback(async () => {
     try {
-      const selected = await invoke<LocalFileSelection | null>("pick_local_file");
+      const selected = await native_invoke<LocalFileSelection | null>("pick_local_file");
       if (!selected?.path) return;
       let dataUrl: string | undefined;
       if (selected.mimeType.startsWith("image/")) {
-        dataUrl = `data:${selected.mimeType};base64,${await invoke<string>("read_local_file_base64", { path: selected.path })}`;
+        dataUrl = `data:${selected.mimeType};base64,${await native_invoke<string>("read_local_file_base64", { path: selected.path })}`;
         // SVG 不是视觉模型支持的位图格式，先栅格化为 PNG 再作为多模态附件；
         // 转换失败则降级为普通文件（SVG 是 XML 文本，模型仍可读取文件内容）
         if (selected.mimeType.includes("svg")) {
@@ -2238,7 +2242,7 @@ export default function App() {
         const mimeType = mimeFromName(item.name);
         let dataUrl: string | undefined;
         if (mimeType.startsWith("image/")) {
-          dataUrl = `data:${mimeType};base64,${await invoke<string>("read_local_file_base64", { path: item.path })}`;
+          dataUrl = `data:${mimeType};base64,${await native_invoke<string>("read_local_file_base64", { path: item.path })}`;
           if (mimeType.includes("svg")) {
             try {
               dataUrl = await svgDataUrlToPngDataUrl(dataUrl);
@@ -3242,7 +3246,7 @@ export default function App() {
     setHiddenSessionIds((current) => [...new Set([...current, ...ids])]);
     // 已删除会话的置顶记录一并移除，避免置顶区残留幽灵 id
     setPinnedSessionIds((current) => current.filter((id) => !idSet.has(id)));
-    // 未读记录一并清理，避免 localStorage 残留
+    // 未读记录一并清理，避免 本地存储 残留
     clearSessionUnread(ids);
 
     // 清理本地缓存与归属映射
@@ -3257,7 +3261,7 @@ export default function App() {
       return next;
     });
     try {
-      const cache = JSON.parse(localStorage.getItem("dsh-session-messages") || "{}") as Record<string, unknown>;
+      const cache = JSON.parse(storage_get("dsh-session-messages") || "{}") as Record<string, unknown>;
       let changed = false;
       for (const id of ids) {
         if (id in cache) {
@@ -3265,7 +3269,7 @@ export default function App() {
           changed = true;
         }
       }
-      if (changed) localStorage.setItem("dsh-session-messages", JSON.stringify(cache));
+      if (changed) storage_set("dsh-session-messages", JSON.stringify(cache));
     } catch {
       // 缓存清理失败不影响主流程
     }
@@ -3326,7 +3330,7 @@ export default function App() {
 
   const pickLocalProject = useCallback(async (parentPath: string) => {
     try {
-      const selected = await invoke<WorkspaceEntry[]>("pick_local_directory");
+      const selected = await native_invoke<WorkspaceEntry[]>("pick_local_directory");
       const entries = (selected || [])
         .filter((entry) => Boolean(entry?.path))
         .map((entry) => ({
@@ -3503,7 +3507,7 @@ export default function App() {
     if (projectBranches[project.path] === branch) return;
     setSwitchingBranchPath(project.path);
     try {
-      const state = await invoke<GitBranchesState>("switch_project_git_branch", {
+      const state = await native_invoke<GitBranchesState>("switch_project_git_branch", {
         path: project.path,
         branch,
       });
@@ -3520,7 +3524,7 @@ export default function App() {
     let cancelled = false;
     for (const project of combinedProjects) {
       if (!project.path) continue;
-      void invoke<GitBranchesState>("project_git_branches", { path: project.path })
+      void native_invoke<GitBranchesState>("project_git_branches", { path: project.path })
         .then((state) => {
           if (cancelled) return;
           setProjectBranches((current) => ({ ...current, [project.path]: state.current }));
@@ -3710,11 +3714,19 @@ export default function App() {
   }
 
   return (
-    <div className={`app-shell${sidebarResizing ? " sidebar-resizing" : ""}`} style={appShellStyle}>
+    <div className={`app-shell${sidebarResizing ? " sidebar-resizing" : ""}${mobileSidebarOpen ? " mobile-sidebar-open" : ""}`} style={appShellStyle}>
       {/* 顶部全局操作栏：跨侧栏与主区，右侧承载 协作/信息/产物 Tab。
           三段式布局：左右弹性区夹住标题——空间足时标题保持居中，
           Tab 多时标题先省略号截断、Tab 条带内部滚动，不再盖住标题 */}
       <header className="app-toolbar" data-tauri-drag-region>
+        <button
+          type="button"
+          className="mobile-sidebar-toggle"
+          aria-label="打开侧栏"
+          onClick={() => setMobileSidebarOpen(true)}
+        >
+          ☰
+        </button>
         <div className="app-toolbar-spacer" data-tauri-drag-region />
         <div className="app-toolbar-title" data-tauri-drag-region>DSH Java Desktop</div>
         <div className="app-toolbar-actions-zone" data-tauri-drag-region>
@@ -3732,6 +3744,9 @@ export default function App() {
           </div>
         </div>
       </header>
+      {mobileSidebarOpen && (
+        <div className="mobile-sidebar-scrim" onClick={() => setMobileSidebarOpen(false)} />
+      )}
 
       <div className="app-body">
       <Sidebar
@@ -3760,7 +3775,7 @@ export default function App() {
           setActiveView(view);
         }}
         onSelectDefaultWorkspace={selectDefaultWorkspace}
-        onSelectSession={(id) => void selectSession(id)}
+        onSelectSession={(id) => { setMobileSidebarOpen(false); void selectSession(id); }}
         sessionCustomTitles={customSessionTitles}
         onRenameSession={renameSession}
         onDeleteSession={deleteSession}

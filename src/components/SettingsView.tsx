@@ -4,6 +4,7 @@ import PluginsSettings from "./PluginsSettings";
 import BotsSettings from "./BotsSettings";
 import { CliSettings, McpSettings, SkillsSettings } from "./ExtensionsSettings";
 import { DigitalHumansSettings } from "./DigitalHumansSettings";
+import MobileDevicesSettings from "./MobileDevicesSettings";
 import type {
   AgentServiceState,
   ApprovalMode,
@@ -15,7 +16,7 @@ import type {
   WorkspaceEntry,
 } from "../types";
 
-export type SettingsSection = "models" | "digital-humans" | "bots" | "service" | "preferences" | "plugins" | "skills" | "mcp" | "cli";
+export type SettingsSection = "models" | "digital-humans" | "bots" | "mobile-devices" | "service" | "preferences" | "plugins" | "skills" | "mcp" | "cli";
 
 type SettingsViewProps = {
   service: AgentServiceState | null;
@@ -227,6 +228,7 @@ export default function SettingsView({
     { id: "mcp", title: "MCP 服务", description: "添加、测试与管理 MCP server 连接", icon: <McpIcon className="icon-16" />, group: "扩展" },
     { id: "cli", title: "CLI 子智能体", description: "配置 claude / codex / ACP 外部 CLI 命令", icon: <CliIcon className="icon-16" />, group: "扩展" },
     { id: "plugins", title: "插件", description: "安装插件包、上传 JAR，配置插件参数", icon: <PuzzleIcon className="icon-16" />, group: "扩展" },
+    { id: "mobile-devices", title: "移动设备", description: "生成配对码、管理已配对手机与访问开关", icon: <SettingsIcon className="icon-16" />, group: "系统" },
     { id: "service", title: "服务", description: "查看本地智能体服务连接状态与 Java Runtime", icon: <SettingsIcon className="icon-16" />, group: "系统" },
     { id: "preferences", title: "偏好", description: "工具执行审批策略、沙箱边界与推理强度", icon: <ShieldIcon className="icon-16" />, group: "系统" },
   ];
@@ -356,6 +358,10 @@ export default function SettingsView({
 
           {activeSection === "bots" ? (
             <BotsSettings servicePort={service?.port ?? null} />
+          ) : null}
+
+          {activeSection === "mobile-devices" ? (
+            <MobileDevicesSettings servicePort={service?.port ?? null} />
           ) : null}
 
           {activeSection === "plugins" ? (

@@ -1,6 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
-import { fetch as pluginFetch } from "@tauri-apps/plugin-http";
+import { storage_get, storage_set } from "../platform/storage";
 import { httpFetch } from "./http";
+import { credential_save, credential_read, credential_delete } from "../platform/credential";
+import { connection_base_url, type ConnectionProfile } from "../platform/connection";
 import type {
   ApiEnvelope,
   DigitalHuman,
@@ -15,7 +16,7 @@ import type {
  *
  * 双通道策略：
  * 1. 优先调本地 Runtime 的 /api/digital-humans/**（JAR 实现后即成为事实源）；
- * 2. 接口 404 / 服务不可用时自动降级到 localStorage 持久化，
+ * 2. 接口 404 / 服务不可用时自动降级到 本地存储 持久化，
  *    接口形状保持一致，JAR 就绪后无需改 UI。
  *
  * 远端健康检查通过 Tauri plugin-http 直连（桌面进程不受 CORS 限制），
@@ -35,7 +36,7 @@ const PROJECT_BIND_KEY = "dsh-digital-human-projects";
 
 function readLocal(): DigitalHuman[] {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
+    const raw = JSON.parse(storage_get(STORE_KEY) || "[]");
     return Array.isArray(raw) ? raw.filter((item): item is DigitalHuman => Boolean(item && item.id)) : [];
   } catch {
     return [];
@@ -44,7 +45,7 @@ function readLocal(): DigitalHuman[] {
 
 function writeLocal(humans: DigitalHuman[]) {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(humans));
+    storage_set(STORE_KEY, JSON.stringify(humans));
   } catch {
     // 存储失败不阻断主流程
   }
@@ -52,7 +53,7 @@ function writeLocal(humans: DigitalHuman[]) {
 
 function readLocalRooms(): Record<string, RoomProjection> {
   try {
-    const raw = JSON.parse(localStorage.getItem(ROOM_STORE_KEY) || "{}");
+    const raw = JSON.parse(storage_get(ROOM_STORE_KEY) || "{}");
     return raw && typeof raw === "object" ? raw as Record<string, RoomProjection> : {};
   } catch {
     return {};
@@ -61,7 +62,7 @@ function readLocalRooms(): Record<string, RoomProjection> {
 
 function writeLocalRooms(rooms: Record<string, RoomProjection>) {
   try {
-    localStorage.setItem(ROOM_STORE_KEY, JSON.stringify(rooms));
+    storage_set(ROOM_STORE_KEY, JSON.stringify(rooms));
   } catch {
     // 忽略
   }
@@ -75,7 +76,7 @@ function newId(prefix: string): string {
 
 function readProjectBindings(): Record<string, string> {
   try {
-    const raw = JSON.parse(localStorage.getItem(PROJECT_BIND_KEY) || "{}");
+    const raw = JSON.parse(storage_get(PROJECT_BIND_KEY) || "{}");
     return raw && typeof raw === "object" ? raw as Record<string, string> : {};
   } catch {
     return {};
@@ -84,7 +85,7 @@ function readProjectBindings(): Record<string, string> {
 
 function writeProjectBindings(bindings: Record<string, string>) {
   try {
-    localStorage.setItem(PROJECT_BIND_KEY, JSON.stringify(bindings));
+    storage_set(PROJECT_BIND_KEY, JSON.stringify(bindings));
   } catch {
     // 忽略
   }
@@ -100,7 +101,7 @@ function applyProjectBindings(humans: DigitalHuman[]): DigitalHuman[] {
 }
 
 /** 设置数字人的项目归属；传空串表示改回全局 */
-export async function assignDigitalHumanToProject(port: number | null, id: string, projectPath: string): Promise<void> {
+export async function assignDigitalHumanToProject(port: number | ConnectionProfile | null, id: string, projectPath: string): Promise<void> {
   // 本地投影立即生效：UI 即时反馈 + Runtime 不可用时的兜底
   const bindings = readProjectBindings();
   if (projectPath) bindings[id] = projectPath;
@@ -126,7 +127,7 @@ export async function assignDigitalHumanToProject(port: number | null, id: strin
 }
 
 /** 把仅存在于本地投影的归属写回服务端（幂等；失败静默，下次列表加载时重试） */
-async function migrateProjectBindingsToServer(port: number, humans: DigitalHuman[]): Promise<void> {
+async function migrateProjectBindingsToServer(port: number | ConnectionProfile, humans: DigitalHuman[]): Promise<void> {
   const bindings = readProjectBindings();
   const pending = humans.filter((human) => !human.projectPath && bindings[human.id]);
   if (pending.length === 0) return;
@@ -140,9 +141,7 @@ async function migrateProjectBindingsToServer(port: number, humans: DigitalHuman
 
 // ── Runtime 通道探测 ──────────────────────────
 
-function baseUrl(port: number): string {
-  return `http://127.0.0.1:${port}`;
-}
+
 
 /**
  * REST 请求统一超时：覆盖 httpFetch 连接阶段 + response.json() body 读取阶段。
@@ -155,7 +154,7 @@ function baseUrl(port: number): string {
  */
 const REQUEST_TIMEOUT_MS = 15_000;
 
-async function request<T>(port: number, path: string, init?: RequestInit): Promise<T> {
+async function request<T>(port: number | ConnectionProfile, path: string, init?: RequestInit): Promise<T> {
   // 原生 fetch 优先（服务端已开 CORS）；被 CORS 拦下或网络异常时自动回退
   // plugin-http（外部数字人 Runtime 等未开 CORS 的远端保持历史行为）。
   // 此前全量走 plugin-http，其 IPC 流转发有已知缺陷，偶发静默挂死，
@@ -168,8 +167,8 @@ async function request<T>(port: number, path: string, init?: RequestInit): Promi
   ]);
 }
 
-async function doRequest<T>(port: number, path: string, init?: RequestInit): Promise<T> {
-  const response = await httpFetch(`${baseUrl(port)}${path}`, {
+async function doRequest<T>(port: number | ConnectionProfile, path: string, init?: RequestInit): Promise<T> {
+  const response = await httpFetch(`${connection_base_url(port)}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
@@ -192,7 +191,7 @@ function isRuntimeUnavailable(error: unknown): boolean {
 
 // ── 目录 CRUD ─────────────────────────────────
 
-export async function listDigitalHumans(port: number | null): Promise<DigitalHuman[]> {
+export async function listDigitalHumans(port: number | ConnectionProfile | null): Promise<DigitalHuman[]> {
   if (port) {
     try {
       const remote = await request<DigitalHuman[]>(port, "/api/digital-humans");
@@ -218,7 +217,7 @@ export type DigitalHumanDraft = {
   projectPath?: string;
 };
 
-export async function createDigitalHuman(port: number | null, draft: DigitalHumanDraft): Promise<DigitalHuman> {
+export async function createDigitalHuman(port: number | ConnectionProfile | null, draft: DigitalHumanDraft): Promise<DigitalHuman> {
   if (port) {
     try {
       return await request<DigitalHuman>(port, "/api/digital-humans", {
@@ -239,7 +238,7 @@ export async function createDigitalHuman(port: number | null, draft: DigitalHuma
 }
 
 export async function updateDigitalHuman(
-  port: number | null,
+  port: number | ConnectionProfile | null,
   id: string,
   patch: Partial<DigitalHumanDraft>,
 ): Promise<DigitalHuman> {
@@ -261,7 +260,7 @@ export async function updateDigitalHuman(
   return humans[index];
 }
 
-export async function deleteDigitalHuman(port: number | null, id: string): Promise<void> {
+export async function deleteDigitalHuman(port: number | ConnectionProfile | null, id: string): Promise<void> {
   if (port) {
     try {
       await request(port, `/api/digital-humans/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -292,7 +291,7 @@ function classifyError(status: number, error: unknown): DiscoverResult["error"] 
 
 /** 探测远端 Agent Card：DSH 走 dsh-agent-card，A2A 走 agent.json */
 export async function discoverDigitalHuman(
-  port: number | null,
+  port: number | ConnectionProfile | null,
   remoteBaseUrl: string,
   endpointType: DigitalHumanEndpoint["type"] = "remote-dsh",
   credentialRef?: string,
@@ -320,13 +319,13 @@ export async function discoverDigitalHuman(
   const startedAt = Date.now();
   try {
     const cardPath = endpointType === "a2a" ? "/.well-known/agent.json" : "/.well-known/dsh-agent-card";
-    // 远端 Agent Card 探测保持 plugin-http：目标端点不受我们控制、未必开 CORS，
-    // 桌面进程直连不被 CORS 限制（见 request() 内注释了解为何本地服务不用这条通道）
-    const response = await pluginFetch(`${normalized}${cardPath}`, {
+    // 远端 Agent Card 探测统一走传输层：Tauri 实现原生 fetch 优先、失败回退 plugin-http，
+    // 目标端点不受我们控制、未必开 CORS。
+    const response = await httpFetch(`${normalized}${cardPath}`, {
       method: "GET",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
-      connectTimeout: 8_000,
-    } as RequestInit);
+      signal: AbortSignal.timeout(8_000),
+    });
     const latencyMs = Date.now() - startedAt;
     if (!response.ok) {
       return { reachable: false, latencyMs, error: classifyError(response.status, null) };
@@ -379,7 +378,7 @@ export async function discoverDigitalHuman(
 
 /** 健康检查：远端探测 Agent Card；本地数字人看 Runtime 是否就绪 */
 export async function healthCheck(
-  port: number | null,
+  port: number | ConnectionProfile | null,
   human: DigitalHuman,
 ): Promise<{ healthState: DigitalHumanHealth; latencyMs?: number }> {
   if (human.endpoint.type === "local-dsh") {
@@ -397,16 +396,16 @@ export async function healthCheck(
 // ── 凭据（Tauri 安全存储） ─────────────────────
 
 export async function saveCredential(credentialRef: string, secret: string): Promise<void> {
-  await invoke("save_credential", { credentialRef, secret });
+  await credential_save(credentialRef, secret);
 }
 
 export async function readCredential(credentialRef: string): Promise<string | null> {
-  return invoke<string | null>("read_credential", { credentialRef });
+  return credential_read(credentialRef);
 }
 
 /**
  * 为一次协作调度临时读取远端数字人的凭据。
- * 返回值只随本次 HTTP 请求发送给本地 Runtime，不写入 localStorage / 服务端数据库。
+ * 返回值只随本次 HTTP 请求发送给本地 Runtime，不写入 本地存储 / 服务端数据库。
  */
 export async function digitalHumanTokensFor(humans: DigitalHuman[]): Promise<Record<string, string>> {
   const entries = await Promise.all(humans.map(async (human) => {
@@ -420,7 +419,7 @@ export async function digitalHumanTokensFor(humans: DigitalHuman[]): Promise<Rec
 }
 
 export async function deleteCredential(credentialRef: string): Promise<void> {
-  await invoke("delete_credential", { credentialRef });
+  await credential_delete(credentialRef);
 }
 
 // ── 房间投影（会话 ↔ 数字人） ──────────────────
@@ -550,7 +549,7 @@ const ROOM_BIND_KEY = "dsh-session-room-bind";
 
 function readBindings(): Record<string, string> {
   try {
-    return JSON.parse(localStorage.getItem(ROOM_BIND_KEY) || "{}") as Record<string, string>;
+    return JSON.parse(storage_get(ROOM_BIND_KEY) || "{}") as Record<string, string>;
   } catch {
     return {};
   }
@@ -564,17 +563,17 @@ function bindRoom(sessionId: string, roomId: string) {
   const bindings = readBindings();
   bindings[sessionId] = roomId;
   try {
-    localStorage.setItem(ROOM_BIND_KEY, JSON.stringify(bindings));
+    storage_set(ROOM_BIND_KEY, JSON.stringify(bindings));
   } catch { /* 忽略 */ }
 }
 
-async function collabRequest<T>(port: number, path: string, init?: RequestInit): Promise<T> {
+async function collabRequest<T>(port: number | ConnectionProfile, path: string, init?: RequestInit): Promise<T> {
   return request<T>(port, `/api/collaboration${path}`, init);
 }
 
 /** 确保会话有对应的服务端房间：已绑定则复用，否则创建 */
 export async function ensureServerRoom(
-  port: number,
+  port: number | ConnectionProfile,
   sessionId: string,
   title: string,
   workspaceId = "default",
@@ -595,18 +594,18 @@ export async function ensureServerRoom(
   return room;
 }
 
-export async function fetchServerRoom(port: number, roomId: string): Promise<ServerRoomView> {
+export async function fetchServerRoom(port: number | ConnectionProfile, roomId: string): Promise<ServerRoomView> {
   return collabRequest<ServerRoomView>(port, `/rooms/${encodeURIComponent(roomId)}`);
 }
 
-export async function joinServerRoom(port: number, roomId: string, digitalHumanId: string): Promise<ServerRoomView> {
+export async function joinServerRoom(port: number | ConnectionProfile, roomId: string, digitalHumanId: string): Promise<ServerRoomView> {
   return collabRequest<ServerRoomView>(port, `/rooms/${encodeURIComponent(roomId)}/participants`, {
     method: "POST",
     body: JSON.stringify({ digitalHumanId }),
   });
 }
 
-export async function leaveServerRoom(port: number, roomId: string, digitalHumanId: string): Promise<ServerRoomView> {
+export async function leaveServerRoom(port: number | ConnectionProfile, roomId: string, digitalHumanId: string): Promise<ServerRoomView> {
   return collabRequest<ServerRoomView>(
     port,
     `/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(digitalHumanId)}`,
@@ -615,7 +614,7 @@ export async function leaveServerRoom(port: number, roomId: string, digitalHuman
 }
 
 export async function postRoomMessage(
-  port: number,
+  port: number | ConnectionProfile,
   roomId: string,
   content: string,
   mentions: string[],
@@ -633,7 +632,7 @@ export async function postRoomMessage(
   });
 }
 
-export async function cancelRoomTask(port: number, roomId: string, taskId: string): Promise<void> {
+export async function cancelRoomTask(port: number | ConnectionProfile, roomId: string, taskId: string): Promise<void> {
   await collabRequest(port, `/tasks/${encodeURIComponent(taskId)}/cancel`, {
     method: "POST",
     body: JSON.stringify({ roomId }),
@@ -641,7 +640,7 @@ export async function cancelRoomTask(port: number, roomId: string, taskId: strin
 }
 
 export async function resumeRoomTask(
-  port: number,
+  port: number | ConnectionProfile,
   roomId: string,
   taskId: string,
   channelCode?: string,
@@ -655,7 +654,7 @@ export async function resumeRoomTask(
 }
 
 export async function retryRoomTask(
-  port: number,
+  port: number | ConnectionProfile,
   roomId: string,
   taskId: string,
   channelCode?: string,
@@ -669,7 +668,7 @@ export async function retryRoomTask(
 }
 
 export async function reassignRoomTask(
-  port: number,
+  port: number | ConnectionProfile,
   roomId: string,
   taskId: string,
   targetDigitalHumanId: string,
@@ -696,7 +695,7 @@ const ROOM_EVENT_MAX_PAGES = 40;
  * 永远落在窗口外（表现为"多人协作最后只剩一个数字人的消息"）。
  * 这里循环翻页直到短页（不足一页即到头）。
  */
-export async function fetchRoomEvents(port: number, roomId: string, afterSeq = 0): Promise<RoomEvent[]> {
+export async function fetchRoomEvents(port: number | ConnectionProfile, roomId: string, afterSeq = 0): Promise<RoomEvent[]> {
   const all: RoomEvent[] = [];
   const seen = new Set<string>();
   let cursor = afterSeq;
@@ -729,7 +728,7 @@ const ROOM_STREAM_IDLE_MS = 600_000;
  * @param afterSeq 初始 seq，也可传 getter（每次重连时取最新值，避免整段历史重放）
  */
 export function subscribeRoomEvents(
-  port: number,
+  port: number | ConnectionProfile,
   roomId: string,
   afterSeq: number | (() => number),
   onEvent: (event: RoomEvent) => void,
@@ -756,7 +755,7 @@ export function subscribeRoomEvents(
         // 不加超时会让重连循环永久停摆，空闲看门狗只在连接建立后才起作用
         const response = await Promise.race([
           httpFetch(
-            `${baseUrl(port)}/api/collaboration/rooms/${encodeURIComponent(roomId)}/events/stream?afterSeq=${startSeq}`,
+            `${connection_base_url(port)}/api/collaboration/rooms/${encodeURIComponent(roomId)}/events/stream?afterSeq=${startSeq}`,
             { signal: controller.signal },
           ),
           new Promise<never>((_, reject) => window.setTimeout(

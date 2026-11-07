@@ -18,6 +18,10 @@ on:
       release-tag-prefix:
         required: true
         type: string
+      dsh-java-ref:
+        required: false
+        type: string
+        default: main
 
 jobs:
   build:
@@ -29,10 +33,25 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Checkout dsh-java backend
+        uses: actions/checkout@v5
+        with:
+          repository: linlannet/dsh-java
+          ref: ${{ inputs.dsh-java-ref }}
+          path: dsh-java
+          token: ${{ secrets.DSH_JAVA_TOKEN != '' && secrets.DSH_JAVA_TOKEN || secrets.GITHUB_TOKEN }}
+
       - uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: npm
+
+      - name: Set up Java and Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -58,6 +77,11 @@ jobs:
         if: inputs.platform == 'macos'
         run: |
           set -euo pipefail
+          # 未配置 Apple 证书时跳过签名，产出未签名 dmg（用户打开会有 Gatekeeper 提示）
+          if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ] || [ -z "${{ secrets.APPLE_SIGNING_IDENTITY }}" ]; then
+            echo "::warning::APPLE_CERTIFICATE 或 APPLE_SIGNING_IDENTITY 未配置，跳过 macOS 代码签名与公证（将产出未签名 dmg）"
+            exit 0
+          fi
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -69,16 +93,16 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security default-keychain -s "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -q "\".*\"" || (echo "No valid codesigning identity found." && exit 1)
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -Fq "${{ secrets.APPLE_SIGNING_IDENTITY }}" || (echo "APPLE_SIGNING_IDENTITY not found." && exit 1)
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -Fq "${{ secrets.APPLE_SIGNING_IDENTITY }}" || (echo "::error::APPLE_SIGNING_IDENTITY 在导入的钥匙串中未找到，请核对。" && exit 1)
+
+      - name: Build and bundle agent (jar + JRE runtime)
+        env:
+          DSH_JAVA_DIR: dsh-java
+          DSH_JRE_TARGET: ${{ inputs.runtime-target }}
+        run: npm run agent:prepare
 
       - name: Verify bundled agent JAR
         run: npm run agent:verify
-
-      - name: Prepare bundled Java runtime
-        env:
-          DSH_JRE_TARGET: ${{ inputs.runtime-target }}
-        run: npm run agent:runtime
 
       - name: Build and publish Tauri release
         uses: tauri-apps/tauri-action@v0

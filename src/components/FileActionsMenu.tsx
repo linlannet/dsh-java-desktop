@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from "react";
+import { native_invoke } from "../platform/native";
+import { detect_host } from "../platform/capabilities";
 
 /**
  * 生成文件的右键操作菜单（对齐聊天产品里文件卡片的菜单能力）：
@@ -68,6 +69,7 @@ export function FileActionsMenu({ path, anchor, onClose }: {
   };
 
   const position = clampAnchor(anchor);
+  const can_reveal = detect_host() === "desktop";
   return (
     <div
       className="file-actions-menu"
@@ -77,13 +79,15 @@ export function FileActionsMenu({ path, anchor, onClose }: {
       onMouseDown={(event) => event.stopPropagation()}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <button type="button" role="menuitem" className="file-actions-menu-item" onClick={() => run(() => invoke("open_local_file", { path }))}>
+      <button type="button" role="menuitem" className="file-actions-menu-item" onClick={() => run(() => native_invoke("open_local_file", { path }))}>
         ↗ 打开
       </button>
-      <button type="button" role="menuitem" className="file-actions-menu-item" onClick={() => run(() => invoke("reveal_local_file", { path }))}>
-        📂 打开文件夹
-      </button>
-      <button type="button" role="menuitem" className="file-actions-menu-item" onClick={() => run(() => invoke("save_local_file_as", { path }))}>
+      {can_reveal && (
+        <button type="button" role="menuitem" className="file-actions-menu-item" onClick={() => run(() => native_invoke("reveal_local_file", { path }))}>
+          📂 打开文件夹
+        </button>
+      )}
+      <button type="button" role="menuitem" className="file-actions-menu-item" onClick={() => run(() => native_invoke("save_local_file_as", { path }))}>
         ⬇ 另存为
       </button>
       <div className="file-actions-menu-divider" aria-hidden="true" />
@@ -97,6 +101,7 @@ export function FileActionsMenu({ path, anchor, onClose }: {
 /** 右键菜单 hook：给任意文件卡片挂 onContextMenu，并渲染返回的 menu */
 export function useFileActions(path: string | null | undefined): {
   onContextMenu: (event: { preventDefault: () => void; clientX: number; clientY: number }) => void;
+  open_at: (x: number, y: number) => void;
   menu: ReactNode;
 } {
   const [anchor, setAnchor] = useState<MenuAnchor | null>(null);
@@ -105,8 +110,12 @@ export function useFileActions(path: string | null | undefined): {
     event.preventDefault();
     setAnchor({ x: event.clientX, y: event.clientY });
   };
+  const open_at = (x: number, y: number) => {
+    if (!path) return;
+    setAnchor({ x, y });
+  };
   const menu = path && anchor ? <FileActionsMenu path={path} anchor={anchor} onClose={() => setAnchor(null)} /> : null;
-  return { onContextMenu, menu };
+  return { onContextMenu, open_at, menu };
 }
 
 /**
@@ -114,9 +123,32 @@ export function useFileActions(path: string | null | undefined): {
  * 适合包 <button>、<article> 等不方便额外挂 hook 的既有卡片。
  */
 export function FileActionsArea({ path, children }: { path: string | null | undefined; children: ReactNode }) {
-  const { onContextMenu, menu } = useFileActions(path);
+  const { onContextMenu, open_at, menu } = useFileActions(path);
+  const long_press_timer = useRef<number | null>(null);
+
+  const clear_timer = () => {
+    if (long_press_timer.current !== null) {
+      window.clearTimeout(long_press_timer.current);
+      long_press_timer.current = null;
+    }
+  };
+
+  const on_touch_start = (event: TouchEvent) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    const { clientX, clientY } = touch;
+    clear_timer();
+    long_press_timer.current = window.setTimeout(() => open_at(clientX, clientY), 600);
+  };
+
   return (
-    <span style={{ display: "contents" }} onContextMenu={onContextMenu}>
+    <span
+      style={{ display: "contents" }}
+      onContextMenu={onContextMenu}
+      onTouchStart={on_touch_start}
+      onTouchEnd={clear_timer}
+      onTouchMove={clear_timer}
+    >
       {children}
       {menu}
     </span>

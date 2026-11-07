@@ -1,3 +1,4 @@
+import { storage_get, storage_set } from "../platform/storage";
 import { memo, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ChevronIcon, FileIcon, SlidersIcon, UsersIcon, XIcon } from "./icons";
@@ -19,7 +20,7 @@ function clampDockWidth(width: number) {
 
 function readInitialDockWidth() {
   if (typeof window === "undefined") return DEFAULT_DOCK_WIDTH;
-  const stored = Number(window.localStorage.getItem(DOCK_WIDTH_STORAGE_KEY));
+  const stored = Number(storage_get(DOCK_WIDTH_STORAGE_KEY));
   return clampDockWidth(Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_DOCK_WIDTH);
 }
 
@@ -250,7 +251,7 @@ const RightDock = memo(function RightDock({ children, splitMode, maximized }: Pr
   const [dockWidth, setDockWidth] = useState(readInitialDockWidth);
 
   useEffect(() => {
-    window.localStorage.setItem(DOCK_WIDTH_STORAGE_KEY, String(dockWidth));
+    storage_set(DOCK_WIDTH_STORAGE_KEY, String(dockWidth));
   }, [dockWidth]);
 
   // 进入分屏时 Dock 不足 640px 则拓宽到 680px（只在该次进入时触发，不覆盖用户手动调整）

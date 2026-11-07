@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { native_invoke } from "../platform/native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DrawIoEmbed, type DrawIoEmbedRef } from "../lib/react-drawio";
 
@@ -37,7 +37,7 @@ export function DrawioPreview({ path, onClose, compact }: Props) {
     let cancelled = false;
     setLoading(true);
     setError("");
-    void invoke<string>("read_local_text_file", { path })
+    void native_invoke<string>("read_local_text_file", { path })
       .then((content) => {
         if (cancelled) return;
         setXml(content);
@@ -67,7 +67,7 @@ export function DrawioPreview({ path, onClose, compact }: Props) {
     const write = async (content: string) => {
       setSaveState("saving");
       try {
-        await invoke("write_local_text_file", { path, contents: content });
+        await native_invoke("write_local_text_file", { path, contents: content });
         setSaveState("saved");
       } catch (caught) {
         console.error("保存 draw.io 文件失败", caught);

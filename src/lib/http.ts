@@ -1,74 +1,94 @@
-import { fetch as pluginFetch } from "@tauri-apps/plugin-http";
+import {
+  get_transport,
+  set_transport,
+  type transport,
+  type transport_request,
+} from "../platform/transport";
+import { is_local_host } from "../platform/connection";
 
 /**
- * 双通道 fetch：优先原生 window.fetch，失败回退 Tauri plugin-http。
- *
- * 背景（2026-09-19 "生成中"永久卡死定位）：plugin-http 经 IPC Channel 转发响应体
- * （plugins-workspace#2129/#2415），偶发 chunk / 关闭信号不送达 webview，
- * SSE 流与 REST 都可能静默挂死；且 webview 的 TCP 连接可能整体坏死
- * （服务端同期出现 Broken pipe），此时所有走 plugin-http 的兜底通道同时失效。
- * 原生 fetch 不经 IPC 转发，流式可靠，但要求服务端开 CORS（内嵌 jar 已开）。
- *
- * 回退策略：按源记住原生失败时间，60 秒内对同源请求直接走插件通道（避免
- * 每次都先吃一次 CORS 拒绝）；超时后重试原生，服务端升级支持 CORS 后自动切回。
- * 对未开 CORS 的远端端点（外部数字人 Runtime 等），该策略等于长期走插件通道，
- * 与历史行为一致。
+ * 传输选择层：桌面/Tauri 走原生 fetch + plugin-http 回退，纯浏览器走 window.fetch。
+ * 具体实现按运行时动态加载，纯浏览器构建不会加载 Tauri 实现。
  */
-const NATIVE_RETRY_MS = 60_000;
-const nativeBlockedOrigins = new Map<string, number>();
+let transport_promise: Promise<transport> | null = null;
+
+async function ensure_transport(): Promise<transport> {
+  if (!transport_promise) {
+    transport_promise = (async () => {
+      const is_tauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+      if (is_tauri) {
+        const { create_tauri_transport } = await import("../platform/impl/tauri_transport");
+        set_transport(create_tauri_transport());
+      } else {
+        const { create_browser_transport } = await import("../platform/impl/browser_transport");
+        set_transport(create_browser_transport());
+      }
+      return get_transport();
+    })();
+  }
+  return transport_promise;
+}
 
 /**
  * 本机鉴权 API Key（D-04）：Rust 壳启动 JAR 时随机生成并注入 harness.auth.api-keys，
- * 前端对 127.0.0.1 的请求统一自动附带 X-API-Key。null = 无鉴权模式（JAR 未启用校验）。
+ * 前端对回环地址的请求统一自动附带 X-API-Key。null = 无鉴权模式（JAR 未启用校验）。
  */
-let localApiKey: string | null = null;
+let local_api_key: string | null = null;
 
 export function setLocalApiKey(key: string | null | undefined): void {
-  localApiKey = key || null;
+  local_api_key = key || null;
 }
 
 /** 返回附带本机鉴权头后的 init（供不经 httpFetch 的裸 fetch 调用点复用） */
 export function localAuthInit(url: string, init?: RequestInit): RequestInit {
-  return withLocalAuth(url, init);
+  return with_local_auth(url, init);
 }
 
-function withLocalAuth(url: string, init?: RequestInit): RequestInit {
-  if (!localApiKey) return init ?? {};
-  let sameOriginLocal = false;
+function with_local_auth(url: string, init?: RequestInit): RequestInit {
+  if (!local_api_key) return init ?? {};
+  let same_origin_local = false;
   try {
-    sameOriginLocal = new URL(url).hostname === "127.0.0.1" || new URL(url).hostname === "localhost";
+    same_origin_local = is_local_host(new URL(url).hostname);
   } catch {
-    sameOriginLocal = false;
+    same_origin_local = false;
   }
-  if (!sameOriginLocal) return init ?? {};
+  if (!same_origin_local) return init ?? {};
   return {
     ...init,
     headers: {
       ...init?.headers,
-      "X-API-Key": localApiKey,
+      "X-API-Key": local_api_key,
     },
   };
 }
 
+function headers_to_record(headers?: HeadersInit): Record<string, string> | undefined {
+  if (!headers) return undefined;
+  if (typeof Headers !== "undefined" && headers instanceof Headers) {
+    const out: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      out[key] = value;
+    });
+    return out;
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers);
+  }
+  return { ...(headers as Record<string, string>) };
+}
+
+function to_transport_request(url: string, init?: RequestInit): transport_request {
+  return {
+    url,
+    method: (init?.method as transport_request["method"]) ?? "GET",
+    headers: headers_to_record(init?.headers),
+    body: (init?.body as BodyInit | null | undefined) ?? undefined,
+    signal: init?.signal ?? undefined,
+  };
+}
+
 export async function httpFetch(url: string, init?: RequestInit): Promise<Response> {
-  const initWithAuth = withLocalAuth(url, init);
-  let origin = "";
-  try {
-    origin = new URL(url).origin;
-  } catch {
-    origin = "";
-  }
-  const blockedAt = origin ? nativeBlockedOrigins.get(origin) : undefined;
-  const nativeAllowed = !origin
-    || blockedAt === undefined
-    || Date.now() - blockedAt > NATIVE_RETRY_MS;
-  if (nativeAllowed) {
-    try {
-      return await window.fetch(url, initWithAuth);
-    } catch (error) {
-      if (!origin) throw error;
-      nativeBlockedOrigins.set(origin, Date.now());
-    }
-  }
-  return pluginFetch(url, initWithAuth);
+  const impl = await ensure_transport();
+  const initWithAuth = with_local_auth(url, init);
+  return impl.request(to_transport_request(url, initWithAuth));
 }

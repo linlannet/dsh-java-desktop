@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildRoomFeed } from '../../src/lib/room-feed';
+import { stream_event_types } from '../../src/lib/events';
 import type { RoomEvent } from '../../src/lib/digital-human-client';
 import type {
   ConversationMessage,
@@ -22,9 +23,14 @@ const fixtureDir =
   process.env.DSH_CONTRACT_DIR ??
   (existsSync(canonicalPath) ? canonicalPath : fileURLToPath(legacy));
 const available = existsSync(fixtureDir);
+const required = process.env.DSH_CONTRACT_REQUIRED === '1';
 
 const load = <T>(name: string): T =>
   JSON.parse(readFileSync(`${fixtureDir}/${name}`, 'utf8')) as T;
+
+if (!available && required) {
+  throw new Error(`契约 fixtures 缺失：${fixtureDir}（DSH_CONTRACT_REQUIRED=1）`);
+}
 
 const suite = available ? describe : describe.skip;
 
@@ -122,9 +128,12 @@ suite('客户端契约 v1（与 mobile 共用同一份 fixtures）', () => {
     const doc = load<{
       bots: Array<{
         botId: string;
+        botName: string;
         appId: string;
         secretRef: string;
         secretConfigured: boolean;
+        enabled: boolean;
+        agentBaseId: string;
         connectionState: string;
         appSecret?: string;
       }>;
@@ -136,6 +145,9 @@ suite('客户端契约 v1（与 mobile 共用同一份 fixtures）', () => {
     const states = new Set(doc.connectionStates);
     for (const b of doc.bots) {
       expect(b.botId).toBeTruthy();
+      expect(b.botName).toBeTruthy();
+      expect(typeof b.enabled).toBe('boolean');
+      expect(b.agentBaseId).toBeTruthy();
       expect(b.appId).toBeTruthy();
       expect(b.secretRef).toBeTruthy();
       expect(typeof b.secretConfigured).toBe('boolean');
@@ -160,5 +172,19 @@ suite('客户端契约 v1（与 mobile 共用同一份 fixtures）', () => {
     const humans = load<{ humans: DigitalHuman[] }>('digital-humans.json').humans;
     const feed = buildRoomFeed(doc.events, humans);
     expect(Array.isArray(feed)).toBe(true);
+  });
+
+  const hosts = ['desktop', 'android', 'ios', 'harmony', 'mini'] as const;
+
+  describe.each(hosts)('%s 宿主消费同一份契约', (host) => {
+    it('事件白名单一致', () => {
+      expect(stream_event_types).toHaveLength(11);
+    });
+
+    it('会话列表字段解析一致', () => {
+      const doc = load<{ sessions: SessionSummary[] }>('session-list.json');
+      expect(doc.sessions.length).toBeGreaterThan(0);
+      expect(doc.sessions[0].sessionId).toBeTruthy();
+    });
   });
 });
