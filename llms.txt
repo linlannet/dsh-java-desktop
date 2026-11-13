@@ -1,0 +1,33 @@
+# DSH Java Desktop (dsh-java-desktop) — Desktop client
+
+> Tauri 2 + React 19 desktop client for DSH Java. Bundles the dsh-java agent runtime (JAR + JRE)
+> and provides digital-human collaboration, A2A protocol, plugins, skills and approval UI.
+
+Key capabilities:
+- Bundled Agent Runtime: starts `dsh-java-app.jar` locally, allocates port, injects API key
+- ReAct conversation UI with SSE streaming, Markdown, tools, approval cards
+- Digital humans, rooms, A2A, plugins, skills (zip/Git), MCP, CLI sub-agents
+- Feishu bot settings and mobile device pairing (short code + access toggle)
+- Platform capability layer: transport / credential / native (Tauri or browser fallback)
+
+Tech stack: Tauri 2 (Rust), React 19, Vite, TypeScript
+Version: 0.2.2
+Repository: https://github.com/linlannet/dsh-java-desktop
+Related: dsh-java, dsh-java-plugins, dsh-java-mobile, dsh-java-release
+
+Build: `npm install && npm run build`
+Test:  `npm test` (vitest)
+Boundary check: `npm run check:boundary`
+Dev:   `npm run tauri:dev` / `npm run tauri:build`
+Agent JAR: `npm run agent:copy`
+
+Key paths:
+- src/App.tsx, src/components/*, src/lib/*, src/platform/*
+- src-tauri/ (Rust shell, tauri.conf.json, capabilities)
+- resources/agent/ (bundled JAR + runtime)
+- tests/unit/*, docs/
+
+Docs:
+- README.md / README.en.md
+- docs/specs/mobile_app_evolution/
+- AGENTS.md

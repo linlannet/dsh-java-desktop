@@ -1,4 +1,5 @@
-import { storage_get, storage_set } from "../platform/storage";
+import { storage_get, storage_remove, storage_set } from "../platform/storage";
+import { httpFetch } from "../lib/http";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { DigitalHuman, SessionSummary, WorkspaceEntry } from "../types";
 import { sanitizeDisplayName, stripHiddenContext, truncateSessionTitle, visibleUserMessage } from "../lib/text";
@@ -16,6 +17,7 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  UserIcon,
   XIcon,
 } from "./icons";
 
@@ -42,6 +44,212 @@ const TIME_FILTER_OPTIONS: Array<{ value: SessionTimeFilter; label: string }> = 
   { value: "7d", label: "最近 7 天" },
   { value: "30d", label: "最近 30 天" },
 ];
+
+// ── 账号入口（对齐豆包侧边栏底部布局：头像 + 昵称/未登录 + 箭头） ──
+type AuthUser = {
+  userName: string;
+  nickName?: string;
+  avatarUrl?: string;
+  token?: string;
+};
+
+function loadAuthUser(): AuthUser | null {
+  const raw = storage_get("dsh-auth-user");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+/** 登录入口是否可见：配置开启且填写了 URI 时，才在底部「设置」旁显示登录按钮 */
+function loadLoginEntryVisible(): boolean {
+  try {
+    const raw = storage_get("dsh-auth-config");
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { enabled?: boolean; uri?: string };
+    return Boolean(parsed.enabled) && Boolean(parsed.uri && parsed.uri.trim());
+  } catch {
+    return false;
+  }
+}
+
+/** 登录弹窗：调用 /api/auth/login（linlan-emis 风格 Result 包装），成功回传用户信息 */
+function LoginModal({ onClose, onDone }: { onClose: () => void; onDone: (user: AuthUser) => void }) {
+  const [apiBase, setApiBase] = useState(() => {
+    try {
+      const raw = storage_get("dsh-auth-config");
+      if (raw) {
+        const parsed = JSON.parse(raw) as { uri?: string };
+        if (parsed?.uri) return parsed.uri;
+      }
+    } catch {
+      // 忽略损坏的配置
+    }
+    return storage_get("dsh-auth-api") ?? "";
+  });
+  const [userName, setUserName] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (busy) return;
+    if (!userName.trim() || !password) {
+      setError("请输入用户名和密码");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const base = apiBase.trim().replace(/\/+$/, "");
+      storage_set("dsh-auth-api", base);
+      const resp = await httpFetch(`${base}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userName: userName.trim(), password }),
+      });
+      const payload = await resp.json().catch(() => null);
+      if (!resp.ok) {
+        setError(payload?.message ?? payload?.msg ?? `登录失败（${resp.status}）`);
+        return;
+      }
+      const data = payload?.data ?? payload ?? {};
+      const u = data.userInfo ?? data.user ?? data;
+      onDone({
+        userName: u.userName ?? userName.trim(),
+        nickName: u.nickName ?? u.nick_name ?? "",
+        avatarUrl: u.avatarUrl ?? u.avatar_url ?? "",
+        token: data.token ?? u.token ?? "",
+        userId: u.userId ?? u.user_id ?? null,
+        roleLevel: u.roleLevel ?? u.role_level ?? null,
+        tenantId: u.tenantId ?? u.tenant_id ?? null,
+        source: "real",
+      });
+    } catch (e) {
+      setError(`无法连接认证服务：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(event) => event.stopPropagation()}>
+        <h3>登录</h3>
+        <p>登录后同步你的对话与偏好设置</p>
+        <div className="login-fields">
+          <input
+            value={apiBase}
+            placeholder="认证服务地址（如 http://127.0.0.1:8080，可留空走同源）"
+            aria-label="认证服务地址"
+            onChange={(event) => setApiBase(event.target.value)}
+          />
+          <input
+            value={userName}
+            autoFocus
+            placeholder="用户名"
+            aria-label="用户名"
+            onChange={(event) => setUserName(event.target.value)}
+          />
+          <input
+            value={password}
+            type="password"
+            placeholder="密码"
+            aria-label="密码"
+            onChange={(event) => setPassword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void submit();
+              if (event.key === "Escape") onClose();
+            }}
+          />
+        </div>
+        <div className="login-error">{error}</div>
+        <div className="login-actions">
+          <button type="button" className="login-btn" onClick={onClose}>取消</button>
+          <button type="button" className="login-btn primary" disabled={busy} onClick={() => void submit()}>
+            {busy ? "登录中…" : "登录"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 底部账号入口：未登录显示默认图标 + 「未登录」，已登录显示头像 + 昵称并可退出 */
+function AccountEntry() {
+  const [user, setUser] = useState<AuthUser | null>(() => loadAuthUser());
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // 个人登录设置面板（设置 → 系统 → 个人登录）变更登录态/配置时同步刷新
+  useEffect(() => {
+    const sync = () => setUser(loadAuthUser());
+    const openLogin = () => setLoginOpen(true);
+    window.addEventListener("dsh-auth-changed", sync);
+    window.addEventListener("dsh-open-login", openLogin);
+    return () => {
+      window.removeEventListener("dsh-auth-changed", sync);
+      window.removeEventListener("dsh-open-login", openLogin);
+    };
+  }, []);
+
+  const displayName = user ? (user.nickName || user.userName || "已登录") : "未登录";
+
+  return (
+    <>
+      <button
+        type="button"
+        className="footer-account"
+        title={user ? displayName : "登录"}
+        onClick={() => (user ? setMenuOpen((v) => !v) : setLoginOpen(true))}
+      >
+        <span className={`footer-avatar${user ? "" : " default"}`}>
+          {user?.avatarUrl ? (
+            <img src={user.avatarUrl} alt="" />
+          ) : user ? (
+            <b>{(user.nickName || user.userName || "U").charAt(0).toUpperCase()}</b>
+          ) : (
+            <UserIcon className="icon-14" />
+          )}
+        </span>
+        <span className="footer-account-name">{displayName}</span>
+        <ChevronIcon className="footer-account-chevron" />
+      </button>
+      {loginOpen ? (
+        <LoginModal
+          onClose={() => setLoginOpen(false)}
+          onDone={(next) => {
+            storage_set("dsh-auth-user", JSON.stringify(next));
+            setUser(next);
+            setLoginOpen(false);
+            window.dispatchEvent(new Event("dsh-auth-changed"));
+          }}
+        />
+      ) : null}
+      {menuOpen ? (
+        <div className="account-menu-overlay" onClick={() => setMenuOpen(false)}>
+          <div className="account-menu" onClick={(event) => event.stopPropagation()}>
+            <div className="account-menu-name">{displayName}</div>
+            <button
+              type="button"
+              className="account-menu-item"
+              onClick={() => {
+                storage_remove("dsh-auth-user");
+                setUser(null);
+                setMenuOpen(false);
+                window.dispatchEvent(new Event("dsh-auth-changed"));
+              }}
+            >
+              退出登录
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
 
 type SidebarProps = {
   activeView: WorkspaceView;
@@ -229,6 +437,13 @@ export default function Sidebar({
   const [dragging, setDragging] = useState<SidebarDragState | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTargetState | null>(null);
   const [dragPreview, setDragPreview] = useState<DragPreviewState | null>(null);
+  // 登录入口可见性：配置开启且填写 URI 时，在底部「设置」旁显示登录按钮
+  const [loginEntryVisible, setLoginEntryVisible] = useState(() => loadLoginEntryVisible());
+  useEffect(() => {
+    const sync = () => setLoginEntryVisible(loadLoginEntryVisible());
+    window.addEventListener("dsh-auth-changed", sync);
+    return () => window.removeEventListener("dsh-auth-changed", sync);
+  }, []);
   // 会话列表分页：每个项目默认只展示前几条，点击「加载更多」再追加
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const showMoreSessions = (path: string, step: number) => {
@@ -1074,11 +1289,26 @@ export default function Sidebar({
       ) : null}
 
       <div className="sidebar-footer">
-        <button className={activeView === "settings" ? "footer-link active" : "footer-link"} onClick={() => onViewChange("settings")}>
+        <AccountEntry />
+        {loginEntryVisible ? (
+          <button
+            type="button"
+            className="footer-link footer-login"
+            onClick={() => window.dispatchEvent(new Event("dsh-open-login"))}
+            title="登录"
+            aria-label="登录"
+          >
+            <UserIcon className="icon-16" />
+          </button>
+        ) : null}
+        <button
+          className={activeView === "settings" ? "footer-link footer-gear active" : "footer-link footer-gear"}
+          onClick={() => onViewChange("settings")}
+          title="设置"
+          aria-label="设置"
+        >
           <SettingsIcon className="icon-16" />
-          <span>设置</span>
         </button>
-
       </div>
 
       {projectModalOpen ? (

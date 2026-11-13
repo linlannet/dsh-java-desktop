@@ -10,6 +10,11 @@
 
 </div>
 
+> **TL;DR** · DSH Java 桌面工作台：Tauri 2 + React 19，内置 Agent Runtime，数字人协作与 A2A 协议。
+> **Keywords**: Desktop, Tauri, React, AI Agent, Digital Human, A2A, MCP
+> **相关仓库**: [dsh-java](https://github.com/linlannet/dsh-java) · [dsh-java-plugins](https://github.com/linlannet/dsh-java-plugins) · [dsh-java-mobile](https://github.com/linlannet/dsh-java-mobile) · [dsh-java-release](https://github.com/linlannet/dsh-java-release)
+> **AI 入口**: [llms.txt](./llms.txt) · [AGENTS.md](./AGENTS.md)
+
 > [**DSH Java Desktop**](https://mp.weixin.qq.com/s/1PVow3-HvItfUvSReGt6wQ) 是 [dsh-java](https://t.zsxq.com/kYcVt)（Agent Runtime 服务端）的桌面工作台。它是一款开箱即用的「数字人」AI 智能体桌面端 —— 内置 DSH Java Agent Runtime，零依赖装完即用；单个数字人胜任编码、绘图、文档等多场景工作，多个数字人经 dsh.v1 / A2A 跨端组建协作团队，插件 / Skills / MCP / CLI 随需扩展。
 >
 > 桌面端只做壳，能力由服务端承载：**TypeScript + React** 构建界面，**Tauri 2** 负责窗口、进程托管与本机能力，智能体能力由 `dsh-java` 实现，由桌面壳启动内嵌 Spring Boot JAR，经本机 `127.0.0.1` HTTP/SSE API 调用（这个方式也是让壳可以快速接入远程 Agent 的最佳方式）。

@@ -2,6 +2,28 @@
   "name": "dsh-java-desktop",
   "private": true,
   "version": "0.2.2",
+  "description": "DSH Java desktop client — Tauri 2 + React 19, bundled agent runtime, digital human collaboration and A2A protocol.",
+  "keywords": [
+    "agent",
+    "agent-harness",
+    "react-loop",
+    "mcp",
+    "tauri",
+    "react",
+    "ai-agent",
+    "digital-human",
+    "llm"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/linlannet/dsh-java-desktop.git"
+  },
+  "homepage": "https://github.com/linlannet/dsh-java-desktop",
+  "bugs": {
+    "url": "https://github.com/linlannet/dsh-java-desktop/issues"
+  },
+  "license": "MIT",
+  "author": "Linlan",
   "type": "module",
   "scripts": {
     "dev": "vite",
