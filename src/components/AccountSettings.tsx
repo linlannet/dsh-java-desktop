@@ -1,31 +1,25 @@
-import { useState } from "react";
-import { storage_get, storage_remove, storage_set } from "../platform/storage";
-import { httpFetch } from "../lib/http";
+import { useEffect, useRef, useState } from "react";
+import {
+  EMIS_CONFIG_KEY,
+  clearEmisTicket,
+  emisLogout,
+  loadEmisConfig,
+  loadEmisIdentity,
+  pendingEmisTicket,
+  pollEmisTicket,
+  saveEmisConfig,
+  saveEmisIdentity,
+  startEmisLogin,
+  type EmisIdentity,
+} from "../lib/emis-oidc";
 
 /**
- * 个人登录设置面板（系统分组）。
- * 可配置登录 URI / 用户名 / 密码 / 角色 roleLevel；
- * 支持测试验证（只校验凭据）、模拟登录（跳过服务器建本机会话）、真实登录；
- * 已登录可退出登录、注销用户（调 DELETE {uri}/api/user/{id}，需 roleLevel=0）。
+ * 企业身份登录面板（设置 → 系统 → EMIS登录）。
+ *
+ * 身份由 linlan-emis 统一签发，dsh-java 后端走 OIDC 授权码 + PKCE + JWKS 验签，
+ * token 只保存在宿主 HttpSession；本面板只保存展示用身份（不含 token），
+ * 并控制底部账号入口是否显示。
  */
-
-/** 登录配置（本机持久化；含密码便于联调，注意设备安全） */
-type AuthConfig = { uri: string; userName: string; password: string; roleLevel: number; enabled: boolean };
-
-/** 登录会话（与侧边栏底部账号入口共用 dsh-auth-user） */
-type AuthUser = {
-  userName: string;
-  nickName?: string;
-  avatarUrl?: string;
-  token?: string;
-  userId?: number | null;
-  roleLevel?: number | null;
-  tenantId?: number | null;
-  source?: "real" | "mock";
-};
-
-const CONFIG_KEY = "dsh-auth-config";
-const USER_KEY = "dsh-auth-user";
 
 const ROLE_OPTIONS = [
   { value: 0, label: "0 · 主任（超管）" },
@@ -39,99 +33,48 @@ function roleLabel(level?: number | null) {
   return found ? found.label : level == null ? "未设置" : String(level);
 }
 
-function loadConfig(): AuthConfig {
-  try {
-    const raw = storage_get(CONFIG_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<AuthConfig>;
-      return {
-        uri: parsed.uri ?? "",
-        userName: parsed.userName ?? "",
-        password: parsed.password ?? "",
-        roleLevel: typeof parsed.roleLevel === "number" ? parsed.roleLevel : 2,
-        enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : false,
-      };
-    }
-  } catch {
-    // 忽略损坏的本地配置
-  }
-  return { uri: "", userName: "", password: "", roleLevel: 2, enabled: false };
-}
-
-function loadUser(): AuthUser | null {
-  try {
-    const raw = storage_get(USER_KEY);
-    return raw ? (JSON.parse(raw) as AuthUser) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** 兼容 Result{data:{token,userInfo}} 与裸对象两种返回包装 */
-function parseLoginPayload(payload: unknown, fallbackName: string): AuthUser {
-  const root = (payload ?? {}) as Record<string, any>;
-  const data = root.data ?? root;
-  const u = data.userInfo ?? data.user ?? data;
-  return {
-    userName: u.userName ?? fallbackName,
-    nickName: u.nickName ?? u.nick_name ?? "",
-    avatarUrl: u.avatarUrl ?? u.avatar_url ?? "",
-    token: data.token ?? u.token ?? "",
-    userId: u.userId ?? u.user_id ?? null,
-    roleLevel: u.roleLevel ?? u.role_level ?? null,
-    tenantId: u.tenantId ?? u.tenant_id ?? null,
-    source: "real",
-  };
-}
-
 function notifyAuthChanged() {
   window.dispatchEvent(new Event("dsh-auth-changed"));
 }
 
 export default function AccountSettings() {
-  const [config, setConfig] = useState<AuthConfig>(() => loadConfig());
-  const [user, setUser] = useState<AuthUser | null>(() => loadUser());
+  const [enabled, setEnabled] = useState(() => loadEmisConfig().enabled);
+  const [user, setUser] = useState<EmisIdentity | null>(() => loadEmisIdentity());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const pollingRef = useRef(false);
 
-  const update = (patch: Partial<AuthConfig>) => setConfig((current) => ({ ...current, ...patch }));
-  const baseUri = () => config.uri.trim().replace(/\/+$/, "");
+  // 页面重新聚焦时（用户在浏览器完成登录后切回），若存在待处理 ticket 则自动取回身份
+  useEffect(() => {
+    const onFocus = () => {
+      const ticket = pendingEmisTicket();
+      if (!ticket || pollingRef.current) return;
+      void (async () => {
+        pollingRef.current = true;
+        setBusy(true);
+        setMessage({ kind: "ok", text: "检测到进行中的企业登录，正在同步身份…" });
+        try {
+          const identity = await pollEmisTicket(ticket, { timeoutMs: 8_000, intervalMs: 800 });
+          if (identity) {
+            setUser(identity);
+            notifyAuthChanged();
+            setMessage({ kind: "ok", text: `登录成功：${identity.userName} · ${roleLabel(identity.roleLevel)}` });
+          }
+        } finally {
+          clearEmisTicket();
+          pollingRef.current = false;
+          setBusy(false);
+        }
+      })();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
 
-  const saveConfig = () => {
-    storage_set(CONFIG_KEY, JSON.stringify(config));
-    window.dispatchEvent(new Event("dsh-auth-changed"));
-    setMessage({ kind: "ok", text: "登录配置已保存到本机" });
-  };
-
-  const requestLogin = async (): Promise<AuthUser> => {
-    if (!config.userName.trim()) throw new Error("请先填写用户名");
-    if (!config.password) throw new Error("请先填写密码");
-    const resp = await httpFetch(`${baseUri()}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userName: config.userName.trim(), password: config.password }),
-    });
-    const payload = await resp.json().catch(() => null);
-    if (!resp.ok) {
-      throw new Error(payload?.message ?? payload?.msg ?? `登录失败（${resp.status}）`);
-    }
-    return parseLoginPayload(payload, config.userName.trim());
-  };
-
-  const doTest = async () => {
-    if (busy) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      const next = await requestLogin();
-      storage_set(CONFIG_KEY, JSON.stringify(config));
-      window.dispatchEvent(new Event("dsh-auth-changed"));
-      setMessage({ kind: "ok", text: `验证通过：${next.userName} · ${roleLabel(next.roleLevel)}` });
-    } catch (e) {
-      setMessage({ kind: "err", text: `验证失败：${e instanceof Error ? e.message : String(e)}` });
-    } finally {
-      setBusy(false);
-    }
+  const doSave = () => {
+    saveEmisConfig(enabled);
+    notifyAuthChanged();
+    setMessage({ kind: "ok", text: "登录入口配置已保存" });
   };
 
   const doLogin = async () => {
@@ -139,80 +82,105 @@ export default function AccountSettings() {
     setBusy(true);
     setMessage(null);
     try {
-      const next = await requestLogin();
-      storage_set(CONFIG_KEY, JSON.stringify(config));
-      storage_set(USER_KEY, JSON.stringify(next));
-      setUser(next);
-      notifyAuthChanged();
-      setMessage({ kind: "ok", text: `登录成功：${next.userName} · ${roleLabel(next.roleLevel)}` });
+      // 先保存开关，再发起浏览器登录
+      saveEmisConfig(true);
+      setEnabled(true);
+      const ticket = await startEmisLogin();
+      setMessage({
+        kind: "ok",
+        text: "已在系统浏览器打开企业身份登录页。完成授权后回到此窗口（或任意界面）即可自动同步身份；如未自动同步，请点击「刷新身份」。",
+      });
+      // 浏览器登录后用户可能停留在浏览器：本窗口可见时后台持续轮询 ticket
+      const identity = await pollEmisTicket(ticket, {
+        timeoutMs: 180_000,
+        intervalMs: 1_500,
+        onTick: (left) => {
+          if (left > 0 && left % 30_000 < 1_500) {
+            setMessage({ kind: "ok", text: `等待浏览器完成企业身份登录…（剩余 ${Math.ceil(left / 1000)} 秒）` });
+          }
+        },
+      });
+      clearEmisTicket();
+      if (identity) {
+        setUser(identity);
+        notifyAuthChanged();
+        setMessage({ kind: "ok", text: `登录成功：${identity.userName} · ${roleLabel(identity.roleLevel)}` });
+      } else {
+        setMessage({ kind: "err", text: "等待登录超时。请确认浏览器已完成授权，或重试。" });
+      }
     } catch (e) {
-      setMessage({ kind: "err", text: `登录失败：${e instanceof Error ? e.message : String(e)}` });
+      setMessage({ kind: "err", text: `发起登录失败：${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setBusy(false);
     }
   };
 
-  const doMockLogin = () => {
-    if (!config.userName.trim()) {
-      setMessage({ kind: "err", text: "请先填写用户名" });
+  const doRefresh = async () => {
+    if (busy) return;
+    const ticket = pendingEmisTicket();
+    if (!ticket) {
+      setMessage({ kind: "err", text: "没有进行中的登录。请先点击「使用企业账号登录」。" });
       return;
     }
-    storage_set(CONFIG_KEY, JSON.stringify(config));
-    window.dispatchEvent(new Event("dsh-auth-changed"));
-    const mockUser: AuthUser = {
-      userName: config.userName.trim(),
-      nickName: "",
-      avatarUrl: "",
-      token: `mock-${Date.now()}`,
-      userId: null,
-      roleLevel: config.roleLevel,
-      tenantId: null,
-      source: "mock",
-    };
-    storage_set(USER_KEY, JSON.stringify(mockUser));
-    setUser(mockUser);
-    notifyAuthChanged();
-    setMessage({ kind: "ok", text: `模拟登录成功：${mockUser.userName} · ${roleLabel(config.roleLevel)}（未请求服务器）` });
-  };
-
-  const logout = () => {
-    storage_remove(USER_KEY);
-    setUser(null);
-    notifyAuthChanged();
-    setMessage({ kind: "ok", text: "已退出登录（登录配置保留）" });
-  };
-
-  const unregister = async () => {
-    if (!user) return;
-    const confirmed = window.confirm(
-      `确定注销用户「${user.nickName || user.userName}」吗？将尝试删除服务端账号并清除本机登录态。`,
-    );
-    if (!confirmed) return;
-    let note: string;
-    if (user.source !== "mock" && user.token && user.userId != null) {
-      try {
-        const resp = await httpFetch(`${baseUri()}/api/auth/user/${user.userId}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${user.token}` },
-        });
-        const payload = await resp.json().catch(() => null);
-        note = resp.ok
-          ? "服务端账号已删除"
-          : `服务端注销未成功（${resp.status}${payload?.message ? "：" + payload.message : ""}）`;
-      } catch (e) {
-        note = `服务端不可达（${e instanceof Error ? e.message : String(e)}）`;
+    setBusy(true);
+    try {
+      const identity = await pollEmisTicket(ticket, { timeoutMs: 15_000, intervalMs: 700 });
+      clearEmisTicket();
+      if (identity) {
+        setUser(identity);
+        notifyAuthChanged();
+        setMessage({ kind: "ok", text: `身份已刷新：${identity.userName} · ${roleLabel(identity.roleLevel)}` });
+      } else {
+        setMessage({ kind: "err", text: "尚未获取到登录身份，请在浏览器完成授权后重试。" });
       }
-    } else {
-      note = user.source === "mock" ? "模拟账号仅存在于本机" : "缺少 userId 或 token，跳过服务端注销";
+    } finally {
+      setBusy(false);
     }
-    storage_remove(USER_KEY);
-    setUser(null);
-    notifyAuthChanged();
-    setMessage({ kind: note.includes("已删除") ? "ok" : "err", text: `注销完成：${note}；本机登录态已清除` });
+  };
+
+  const doLogout = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await emisLogout();
+      setUser(null);
+      notifyAuthChanged();
+      setMessage({ kind: "ok", text: "已退出登录（登录入口配置保留）" });
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <>
+      <div className="set-section-label">企业身份登录</div>
+      <section className="set-card">
+        <p className="account-hint">
+          身份由 <strong>linlan-emis（BuddyOne）</strong> 统一管理：浏览器跳转 OIDC 授权（PKCE），
+          RS256 令牌只保存在宿主会话，桌面端仅保存展示用身份、不接触 token。
+        </p>
+        <div className="form-grid">
+          <label className="form-field inline-check">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(event) => setEnabled(event.target.checked)}
+            />
+            <span>开启登录入口（开启后底部显示账号入口：未登录可登录，已登录显示当前人员；关闭则隐藏）</span>
+          </label>
+        </div>
+        <div className="account-actions">
+          <button type="button" className="ghost-action compact" onClick={doSave}>保存配置</button>
+          <button type="button" className="primary-action compact" onClick={() => void doLogin()} disabled={busy}>
+            {busy ? "处理中…" : "使用企业账号登录"}
+          </button>
+          <button type="button" className="ghost-action compact" onClick={() => void doRefresh()} disabled={busy}>
+            刷新身份
+          </button>
+        </div>
+        {message ? <div className={message.kind === "ok" ? "account-msg ok" : "account-msg err"}>{message.text}</div> : null}
+      </section>
+
       {user ? (
         <>
           <div className="set-section-label">当前登录</div>
@@ -221,81 +189,19 @@ export default function AccountSettings() {
               <div className="set-row-main">
                 <strong>{user.nickName ? `${user.nickName}（${user.userName}）` : user.userName}</strong>
                 <span>
-                  来源：{user.source === "mock" ? "模拟登录（本机会话）" : "服务端登录"}
+                  来源：企业身份（OIDC）
                   {user.tenantId != null ? ` · 租户 ${user.tenantId}` : ""}
+                  {Array.isArray(user.scopes) && user.scopes.length ? ` · scope: ${user.scopes.join(" ")}` : ""}
                 </span>
               </div>
-              <span className={`set-chip ${user.source === "mock" ? "" : "live"}`}>{roleLabel(user.roleLevel)}</span>
+              <span className="set-chip live">{roleLabel(user.roleLevel)}</span>
             </div>
             <div className="account-actions">
-              <button type="button" className="ghost-action compact" onClick={logout}>退出登录</button>
-              <button type="button" className="danger-action compact" onClick={() => void unregister()}>注销用户</button>
+              <button type="button" className="ghost-action compact" onClick={() => void doLogout()} disabled={busy}>退出登录</button>
             </div>
           </section>
         </>
       ) : null}
-
-      <div className="set-section-label">登录配置</div>
-      <section className="set-card">
-        <div className="form-grid">
-          <label className="form-field span-2">
-            <span>登录 URI</span>
-            <input
-              value={config.uri}
-              placeholder="http://127.0.0.1:8080（留空则走同源 /api/auth/login）"
-              onChange={(event) => update({ uri: event.target.value })}
-            />
-          </label>
-          <label className="form-field">
-            <span>用户名 userName</span>
-            <input
-              value={config.userName}
-              placeholder="userName"
-              onChange={(event) => update({ userName: event.target.value })}
-            />
-          </label>
-          <label className="form-field">
-            <span>密码 password</span>
-            <input
-              type="password"
-              value={config.password}
-              placeholder="password"
-              onChange={(event) => update({ password: event.target.value })}
-            />
-          </label>
-          <label className="form-field">
-            <span>角色 roleLevel</span>
-            <select value={String(config.roleLevel)} onChange={(event) => update({ roleLevel: Number(event.target.value) })}>
-              {ROLE_OPTIONS.map((option) => (
-                <option key={option.value} value={String(option.value)}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="form-field inline-check">
-            <input
-              type="checkbox"
-              checked={config.enabled}
-              onChange={(event) => update({ enabled: event.target.checked })}
-            />
-            <span>开启登录入口（在侧边栏底部「设置」旁显示登录按钮；需同时填写登录 URI）</span>
-          </label>
-        </div>
-        <div className="account-actions">
-          <button type="button" className="ghost-action compact" onClick={saveConfig}>保存配置</button>
-          <button type="button" className="ghost-action compact" onClick={() => void doTest()} disabled={busy}>
-            {busy ? "验证中…" : "测试验证"}
-          </button>
-          <button type="button" className="ghost-action compact" onClick={doMockLogin} disabled={busy}>模拟登录</button>
-          <button type="button" className="primary-action compact" onClick={() => void doLogin()} disabled={busy}>
-            {busy ? "登录中…" : "登录"}
-          </button>
-        </div>
-        {message ? <div className={message.kind === "ok" ? "account-msg ok" : "account-msg err"}>{message.text}</div> : null}
-        <p className="account-hint">
-          测试验证只校验凭据，不生成本机会话；模拟登录跳过服务器，直接以所选角色建立本机会话（token 以 mock- 开头）；
-          注销用户会调用 DELETE {"{uri}"}/api/auth/user/{"{id}"} 删除服务端账号（需 roleLevel=0）。
-        </p>
-      </section>
     </>
   );
 }

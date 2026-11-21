@@ -1,5 +1,12 @@
-import { storage_get, storage_remove, storage_set } from "../platform/storage";
-import { httpFetch } from "../lib/http";
+import { storage_get, storage_set } from "../platform/storage";
+import {
+  clearEmisTicket,
+  emisLogout,
+  loadEmisIdentity,
+  pollEmisTicket,
+  startEmisLogin,
+  type EmisIdentity,
+} from "../lib/emis-oidc";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { DigitalHuman, SessionSummary, WorkspaceEntry } from "../types";
 import { sanitizeDisplayName, stripHiddenContext, truncateSessionTitle, visibleUserMessage } from "../lib/text";
@@ -45,148 +52,46 @@ const TIME_FILTER_OPTIONS: Array<{ value: SessionTimeFilter; label: string }> = 
   { value: "30d", label: "最近 30 天" },
 ];
 
-// ── 账号入口（对齐豆包侧边栏底部布局：头像 + 昵称/未登录 + 箭头） ──
-type AuthUser = {
-  userName: string;
-  nickName?: string;
-  avatarUrl?: string;
-  token?: string;
-};
-
-function loadAuthUser(): AuthUser | null {
-  const raw = storage_get("dsh-auth-user");
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as AuthUser;
-  } catch {
-    return null;
-  }
-}
-
-/** 登录入口是否可见：配置开启且填写了 URI 时，才在底部「设置」旁显示登录按钮 */
+// ── 账号入口（企业身份 OIDC：头像 + 昵称/未登录 + 箭头） ──
+/** 账号入口是否可见：仅由"开启登录入口"开关决定（OIDC 方案不需要填 URI） */
 function loadLoginEntryVisible(): boolean {
   try {
     const raw = storage_get("dsh-auth-config");
     if (!raw) return false;
-    const parsed = JSON.parse(raw) as { enabled?: boolean; uri?: string };
-    return Boolean(parsed.enabled) && Boolean(parsed.uri && parsed.uri.trim());
+    const parsed = JSON.parse(raw) as { enabled?: boolean };
+    return Boolean(parsed.enabled);
   } catch {
     return false;
   }
 }
 
-/** 登录弹窗：调用 /api/auth/login（linlan-emis 风格 Result 包装），成功回传用户信息 */
-function LoginModal({ onClose, onDone }: { onClose: () => void; onDone: (user: AuthUser) => void }) {
-  const [apiBase, setApiBase] = useState(() => {
-    try {
-      const raw = storage_get("dsh-auth-config");
-      if (raw) {
-        const parsed = JSON.parse(raw) as { uri?: string };
-        if (parsed?.uri) return parsed.uri;
-      }
-    } catch {
-      // 忽略损坏的配置
-    }
-    return storage_get("dsh-auth-api") ?? "";
-  });
-  const [userName, setUserName] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const submit = async () => {
-    if (busy) return;
-    if (!userName.trim() || !password) {
-      setError("请输入用户名和密码");
-      return;
-    }
-    setBusy(true);
-    setError("");
-    try {
-      const base = apiBase.trim().replace(/\/+$/, "");
-      storage_set("dsh-auth-api", base);
-      const resp = await httpFetch(`${base}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userName: userName.trim(), password }),
-      });
-      const payload = await resp.json().catch(() => null);
-      if (!resp.ok) {
-        setError(payload?.message ?? payload?.msg ?? `登录失败（${resp.status}）`);
-        return;
-      }
-      const data = payload?.data ?? payload ?? {};
-      const u = data.userInfo ?? data.user ?? data;
-      onDone({
-        userName: u.userName ?? userName.trim(),
-        nickName: u.nickName ?? u.nick_name ?? "",
-        avatarUrl: u.avatarUrl ?? u.avatar_url ?? "",
-        token: data.token ?? u.token ?? "",
-        userId: u.userId ?? u.user_id ?? null,
-        roleLevel: u.roleLevel ?? u.role_level ?? null,
-        tenantId: u.tenantId ?? u.tenant_id ?? null,
-        source: "real",
-      });
-    } catch (e) {
-      setError(`无法连接认证服务：${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(event) => event.stopPropagation()}>
-        <h3>登录</h3>
-        <p>登录后同步你的对话与偏好设置</p>
-        <div className="login-fields">
-          <input
-            value={apiBase}
-            placeholder="认证服务地址（如 http://127.0.0.1:8080，可留空走同源）"
-            aria-label="认证服务地址"
-            onChange={(event) => setApiBase(event.target.value)}
-          />
-          <input
-            value={userName}
-            autoFocus
-            placeholder="用户名"
-            aria-label="用户名"
-            onChange={(event) => setUserName(event.target.value)}
-          />
-          <input
-            value={password}
-            type="password"
-            placeholder="密码"
-            aria-label="密码"
-            onChange={(event) => setPassword(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void submit();
-              if (event.key === "Escape") onClose();
-            }}
-          />
-        </div>
-        <div className="login-error">{error}</div>
-        <div className="login-actions">
-          <button type="button" className="login-btn" onClick={onClose}>取消</button>
-          <button type="button" className="login-btn primary" disabled={busy} onClick={() => void submit()}>
-            {busy ? "登录中…" : "登录"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+/** 发起企业身份登录并轮询取回身份；供底部账号入口与设置面板共用 */
+async function doEmisLoginFlow(onIdentity: (identity: EmisIdentity) => void): Promise<void> {
+  const ticket = await startEmisLogin();
+  const identity = await pollEmisTicket(ticket, { timeoutMs: 180_000, intervalMs: 1_500 });
+  clearEmisTicket();
+  if (identity) {
+    onIdentity(identity);
+    window.dispatchEvent(new Event("dsh-auth-changed"));
+  }
 }
 
-/** 底部账号入口：未登录显示默认图标 + 「未登录」，已登录显示头像 + 昵称并可退出 */
+/** 底部账号入口：未登录点击走 OIDC 登录，已登录显示身份并可退出 */
 function AccountEntry() {
-  const [user, setUser] = useState<AuthUser | null>(() => loadAuthUser());
-  const [loginOpen, setLoginOpen] = useState(false);
+  const [user, setUser] = useState<EmisIdentity | null>(() => loadEmisIdentity());
   const [menuOpen, setMenuOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [tip, setTip] = useState("");
 
-  // 个人登录设置面板（设置 → 系统 → 个人登录）变更登录态/配置时同步刷新
   useEffect(() => {
-    const sync = () => setUser(loadAuthUser());
-    const openLogin = () => setLoginOpen(true);
+    const sync = () => setUser(loadEmisIdentity());
+    const openLogin = () => {
+      setBusy(true);
+      setTip("已在系统浏览器打开企业身份登录，完成后回到此窗口自动同步…");
+      void doEmisLoginFlow((next) => setUser(next))
+        .catch((e) => setTip(`登录失败：${e instanceof Error ? e.message : String(e)}`))
+        .finally(() => { setBusy(false); setTip(""); });
+    };
     window.addEventListener("dsh-auth-changed", sync);
     window.addEventListener("dsh-open-login", openLogin);
     return () => {
@@ -197,13 +102,23 @@ function AccountEntry() {
 
   const displayName = user ? (user.nickName || user.userName || "已登录") : "未登录";
 
+  const handleClick = () => {
+    if (user) { setMenuOpen((v) => !v); return; }
+    if (busy) return;
+    setBusy(true);
+    setTip("已在系统浏览器打开企业身份登录，完成后回到此窗口自动同步…");
+    void doEmisLoginFlow((next) => setUser(next))
+      .catch((e) => setTip(`登录失败：${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => { setBusy(false); setTip(""); });
+  };
+
   return (
     <>
       <button
         type="button"
         className="footer-account"
-        title={user ? displayName : "登录"}
-        onClick={() => (user ? setMenuOpen((v) => !v) : setLoginOpen(true))}
+        title={user ? displayName : "企业身份登录"}
+        onClick={handleClick}
       >
         <span className={`footer-avatar${user ? "" : " default"}`}>
           {user?.avatarUrl ? (
@@ -214,20 +129,10 @@ function AccountEntry() {
             <UserIcon className="icon-14" />
           )}
         </span>
-        <span className="footer-account-name">{displayName}</span>
+        <span className="footer-account-name">{busy ? "登录中…" : displayName}</span>
         <ChevronIcon className="footer-account-chevron" />
       </button>
-      {loginOpen ? (
-        <LoginModal
-          onClose={() => setLoginOpen(false)}
-          onDone={(next) => {
-            storage_set("dsh-auth-user", JSON.stringify(next));
-            setUser(next);
-            setLoginOpen(false);
-            window.dispatchEvent(new Event("dsh-auth-changed"));
-          }}
-        />
-      ) : null}
+      {tip ? <div className="account-msg ok" style={{ padding: "8px 12px", fontSize: 12 }}>{tip}</div> : null}
       {menuOpen ? (
         <div className="account-menu-overlay" onClick={() => setMenuOpen(false)}>
           <div className="account-menu" onClick={(event) => event.stopPropagation()}>
@@ -236,10 +141,11 @@ function AccountEntry() {
               type="button"
               className="account-menu-item"
               onClick={() => {
-                storage_remove("dsh-auth-user");
-                setUser(null);
-                setMenuOpen(false);
-                window.dispatchEvent(new Event("dsh-auth-changed"));
+                void emisLogout().finally(() => {
+                  setUser(null);
+                  setMenuOpen(false);
+                  window.dispatchEvent(new Event("dsh-auth-changed"));
+                });
               }}
             >
               退出登录
@@ -437,7 +343,7 @@ export default function Sidebar({
   const [dragging, setDragging] = useState<SidebarDragState | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTargetState | null>(null);
   const [dragPreview, setDragPreview] = useState<DragPreviewState | null>(null);
-  // 登录入口可见性：配置开启且填写 URI 时，在底部「设置」旁显示登录按钮
+  // 账号入口可见性：配置开启且填写 URI 时显示（未登录可登录 / 已登录显示人员信息），关闭则隐藏
   const [loginEntryVisible, setLoginEntryVisible] = useState(() => loadLoginEntryVisible());
   useEffect(() => {
     const sync = () => setLoginEntryVisible(loadLoginEntryVisible());
@@ -1289,18 +1195,7 @@ export default function Sidebar({
       ) : null}
 
       <div className="sidebar-footer">
-        <AccountEntry />
-        {loginEntryVisible ? (
-          <button
-            type="button"
-            className="footer-link footer-login"
-            onClick={() => window.dispatchEvent(new Event("dsh-open-login"))}
-            title="登录"
-            aria-label="登录"
-          >
-            <UserIcon className="icon-16" />
-          </button>
-        ) : null}
+        {loginEntryVisible ? <AccountEntry /> : null}
         <button
           className={activeView === "settings" ? "footer-link footer-gear active" : "footer-link footer-gear"}
           onClick={() => onViewChange("settings")}

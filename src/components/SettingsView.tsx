@@ -238,7 +238,7 @@ export default function SettingsView({
     { id: "mcp", title: "MCP 服务", description: "添加、测试与管理 MCP server 连接", icon: <McpIcon className="icon-16" />, group: "扩展" },
     { id: "cli", title: "CLI 子智能体", description: "配置 claude / codex / ACP 外部 CLI 命令", icon: <CliIcon className="icon-16" />, group: "扩展" },
     { id: "plugins", title: "插件", description: "安装插件包、上传 JAR，配置插件参数", icon: <PuzzleIcon className="icon-16" />, group: "扩展" },
-    { id: "account", title: "个人登录", description: "配置登录服务、账号密码与角色，支持测试验证与模拟登录", icon: <AccountIcon className="icon-16" />, group: "系统" },
+    { id: "account", title: "EMIS登录", description: "企业身份（linlan-emis OIDC）登录状态与登录入口", icon: <AccountIcon className="icon-16" />, group: "系统" },
     { id: "mobile-devices", title: "移动设备", description: "生成配对码、管理已配对手机与访问开关", icon: <SettingsIcon className="icon-16" />, group: "系统" },
     { id: "service", title: "服务", description: "查看本地智能体服务连接状态与 Java Runtime", icon: <SettingsIcon className="icon-16" />, group: "系统" },
     { id: "preferences", title: "偏好", description: "工具执行审批策略、沙箱边界与推理强度", icon: <ShieldIcon className="icon-16" />, group: "系统" },
