@@ -18,6 +18,7 @@ import RightDock, { DockTabBar } from "./components/RightDock";
 import { FilePreview, type CodeSnippet } from "./components/FilePreview";
 import { ArrowLeftIcon, PlusIcon, RefreshIcon, UsersIcon } from "./components/icons";
 import { stripHiddenContext, truncateSessionTitle, visibleUserMessage } from "./lib/text";
+import { cleanupExpiredEmisSession, restoreEmisSession } from "./lib/emis-oidc";
 import { playCompletionSound, unlockAudio } from "./lib/sound";
 import {
   activateModelSetting,
@@ -897,6 +898,20 @@ export default function App() {
   const port = service?.port ?? null;
   const serviceReady = serviceStatus === "running" && Boolean(port);
   const appShellStyle = { "--sidebar-width": `${sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth}px` } as CSSProperties & Record<string, string>;
+
+  // 企业身份跨重启恢复 + 过期凭据定时清理：服务就绪后用 Tauri 安全凭据中的 session 向后端换取身份，
+  // 并每 10 分钟校验一次 session 有效性，失效则清除凭据（过期/密钥轮换项回收）。
+  useEffect(() => {
+    if (!serviceReady) return;
+    let cancelled = false;
+    void restoreEmisSession().then((identity) => {
+      if (!cancelled && identity) window.dispatchEvent(new Event("dsh-auth-changed"));
+    });
+    const timer = window.setInterval(() => {
+      void cleanupExpiredEmisSession();
+    }, 10 * 60 * 1000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [serviceReady]);
 
   useEffect(() => {
     storage_set("dsh-sidebar-collapsed", sidebarCollapsed ? "1" : "0");

@@ -61,9 +61,29 @@ DSH_EMIS_OIDC_POST_LOGOUT_REDIRECT_URI=http://localhost:<port>/
 - `src/components/AccountSettings.tsx`：重写为 EMIS OIDC 面板（开关 / 登录 / 刷新 / 退出 / 当前身份）。
 - `src/components/Sidebar.tsx`：账号入口改为 OIDC 流程，删除旧用户名密码弹窗。
 
-## 5. 已知边界
+## 5. 登录态跨重启保持
+
+已实现"登录一次，后端/桌面端重启后免登录"：
+
+- **后端签发 session**：callback 成功时生成自包含会话凭据 `base64url(身份JSON|过期毫秒).HMAC-SHA256`，随 `/api/emis/ticket` 返回；默认 7 天有效。HMAC 密钥由 `SESSION_SIGN_PREFIX + DSH_EMIS_OIDC_CLIENT_SECRET` 派生（client-secret 仅环境变量注入，不落文件）。**session 只含展示用身份，不含 OIDC access/id token**。
+- **桌面端安全存储**：登录成功后用 Tauri `save_credential`（应用数据目录、0600 权限文件）保存 session 串，引用键 `DSH_EMIS_SESSION`；localStorage 只存展示用身份。
+- **启动恢复**：服务就绪后 `App.tsx` 调用 `restoreEmisSession()`，从 Tauri 凭据读 session → `GET /api/emis/session?session=...` 验签换回身份 → 刷新账号入口。
+- **失效处理**：session 过期/篡改验签失败返回 40100，自动清除 Tauri 凭据与本地身份；退出登录调用 `/api/emis/logout` 并删除凭据。
+
+> 注意：HMAC 密钥派生自 `DSH_EMIS_OIDC_CLIENT_SECRET`，因此**该 secret 变更会导致既有 session 全部失效**（需重新登录）。这符合密钥轮换语义。
+
+### 凭据存储与过期清理
+
+- **同文件存储**：`DSH_EMIS_SESSION` 与数字人凭据共用应用数据目录下的 `digital-human-credentials.json`（Rust `save_credential`，0600 权限），业务侧只引用 credentialRef，不散落明文。
+- **过期项回收**：
+  - 后端 ticket（登录中转票据，内存）在 `login`/`callback`/`consumeTicket` 时通过 `purgeExpiredTickets()` 懒清理（5 分钟 TTL）。
+  - 桌面端 `App.tsx` 每 10 分钟调用 `cleanupExpiredEmisSession()`，用 session 向 `/api/emis/session` 校验；无效（过期/篡改/密钥轮换）则删除 Tauri 凭据与本地身份。
+  - 启动恢复 `restoreEmisSession()` 遇到 40100 也会立即清除失效凭据。
+  - 网络不可达时不清除凭据，避免抖动误删。
+
+## 6. 已知边界
 
 - 无 deep-link：回跳靠浏览器 bridge 页 + 桌面端轮询，不需要新增 Tauri 插件。
-- ticket 只在内存，服务重启失效；登录中断请重新发起。
-- 桌面端不落 token：若后续需要"免重复登录"，应复用 Tauri `save_credential` 存宿主会话标识，而不是把 token 写 localStorage。
+- ticket（登录中转票据）仍只在内存、5 分钟有效，登录中断请重新发起；但**登录完成后的 session 凭据是跨重启持久化的**。
+- 桌面端不落 OIDC token；持久化的是后端签发的、只含展示身份的 HMAC session。
 - 若 `DSH_EMIS_OIDC_ENABLED=false` 或未配置，`/api/emis/login` 返回 50300，界面会提示登录失败——这是预期的安全行为（不降级匿名）。

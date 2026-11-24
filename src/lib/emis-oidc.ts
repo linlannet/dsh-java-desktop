@@ -1,6 +1,7 @@
 import { native_invoke } from "../platform/native";
 import { connection_base_url } from "../platform/connection";
 import { storage_get, storage_remove, storage_set } from "../platform/storage";
+import { credential_delete, credential_read, credential_save } from "../platform/credential";
 import { httpFetch } from "./http";
 import type { AgentServiceState } from "../types";
 
@@ -33,6 +34,8 @@ export type EmisIdentity = {
 export const EMIS_USER_KEY = "dsh-auth-user";
 export const EMIS_CONFIG_KEY = "dsh-auth-config";
 const EMIS_TICKET_KEY = "dsh-emis-login-ticket";
+/** Tauri 安全凭据中的会话引用键（真实串存 0600 文件，不在 localStorage） */
+const EMIS_SESSION_CREDENTIAL_REF = "DSH_EMIS_SESSION";
 
 export type EmisConfig = { enabled: boolean };
 
@@ -117,8 +120,14 @@ export async function pollEmisTicket(
       const resp = await httpFetch(`${base}/api/emis/ticket?ticket=${encodeURIComponent(ticket)}`);
       const payload = await resp.json().catch(() => null);
       if (resp.ok && payload?.code === "00000" && payload?.data) {
-        saveEmisIdentity(payload.data as EmisIdentity);
-        return payload.data as EmisIdentity;
+        const result = payload.data as { identity: EmisIdentity; session?: string };
+        const identity = result.identity ?? (result as unknown as EmisIdentity);
+        saveEmisIdentity(identity);
+        // 跨重启：把后端签发的会话凭据写入 Tauri 0600 安全文件
+        if (result.session) {
+          try { await credential_save(EMIS_SESSION_CREDENTIAL_REF, result.session); } catch { /* 凭据写入失败不影响本次登录 */ }
+        }
+        return identity;
       }
     } catch {
       // 服务暂时不可达：继续轮询
@@ -129,7 +138,35 @@ export async function pollEmisTicket(
   return null;
 }
 
-/** 退出登录：调用后端失效 HttpSession，并清本地身份与票据。 */
+/**
+ * 跨重启恢复：从 Tauri 安全凭据读出 session，向后端验签换取身份。
+ * 返回 null 表示未登录 / 凭据失效 / 后端不可达（均由调用方按未登录处理）。
+ */
+export async function restoreEmisSession(): Promise<EmisIdentity | null> {
+  let session: string | null = null;
+  try { session = await credential_read(EMIS_SESSION_CREDENTIAL_REF); } catch { return null; }
+  if (!session || !session.trim()) return null;
+  try {
+    const base = (await harnessBaseUrl()).replace(/\/+$/, "");
+    const resp = await httpFetch(`${base}/api/emis/session?session=${encodeURIComponent(session.trim())}`);
+    const payload = await resp.json().catch(() => null);
+    if (resp.ok && payload?.code === "00000" && payload?.data) {
+      const identity = payload.data as EmisIdentity;
+      saveEmisIdentity(identity);
+      return identity;
+    }
+    // 凭据过期/无效：清除
+    if (payload?.code === "40100") {
+      await credential_delete(EMIS_SESSION_CREDENTIAL_REF).catch(() => {});
+      saveEmisIdentity(null);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** 退出登录：调用后端失效 HttpSession，并清本地身份、票据与持久化会话凭据。 */
 export async function emisLogout(): Promise<void> {
   try {
     const base = (await harnessBaseUrl()).replace(/\/+$/, "");
@@ -139,6 +176,31 @@ export async function emisLogout(): Promise<void> {
   }
   saveEmisIdentity(null);
   clearEmisTicket();
+  try { await credential_delete(EMIS_SESSION_CREDENTIAL_REF); } catch { /* ignore */ }
+}
+
+/**
+ * 定时清理：校验持久化 session 是否仍有效，失效（过期/篡改/密钥轮换）则删除凭据与本地身份。
+ * 由 App 层每隔一段时间调用；与后端 /session 的 40100 处理配合完成过期项回收。
+ */
+export async function cleanupExpiredEmisSession(): Promise<void> {
+  let session: string | null = null;
+  try { session = await credential_read(EMIS_SESSION_CREDENTIAL_REF); } catch { return; }
+  if (!session || !session.trim()) return;
+  let valid = false;
+  try {
+    const base = (await harnessBaseUrl()).replace(/\/+$/, "");
+    const resp = await httpFetch(`${base}/api/emis/session?session=${encodeURIComponent(session.trim())}`);
+    const payload = await resp.json().catch(() => null);
+    valid = Boolean(resp.ok && payload?.code === "00000" && payload?.data);
+  } catch {
+    return; // 后端不可达时不清凭据，避免网络抖动导致误删
+  }
+  if (!valid) {
+    try { await credential_delete(EMIS_SESSION_CREDENTIAL_REF); } catch { /* ignore */ }
+    saveEmisIdentity(null);
+    window.dispatchEvent(new Event("dsh-auth-changed"));
+  }
 }
 
 export function clearEmisTicket(): void {
