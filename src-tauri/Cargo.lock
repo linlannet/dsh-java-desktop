@@ -991,7 +991,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dsh-java-desktop"
+name = "dsh-desktop"
 version = "0.2.2"
 dependencies = [
  "notify-rust",

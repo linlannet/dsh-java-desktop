@@ -12,7 +12,7 @@
 
 > **TL;DR** · DSH Java desktop workbench: Tauri 2 + React 19, bundled agent runtime, digital-human collaboration and A2A protocol.
 > **Keywords**: Desktop, Tauri, React, AI Agent, Digital Human, A2A, MCP
-> **Repositories**: [dsh-java](https://github.com/linlannet/dsh-java) · [dsh-java-plugins](https://github.com/linlannet/dsh-java-plugins) · [dsh-java-mobile](https://github.com/linlannet/dsh-java-mobile) · [dsh-java-release](https://github.com/linlannet/dsh-java-release)
+> **Repositories**: [dsh-java](https://github.com/linlannet/dsh-java) · [dsh-java-plugins](https://github.com/linlannet/dsh-java-plugins) · [dsh-mobile](https://github.com/linlannet/dsh-mobile) · [dsh-java-release](https://github.com/linlannet/dsh-java-release)
 > **For AI**: [llms.txt](./llms.txt) · [AGENTS.md](./AGENTS.md)
 
 > [**DSH Java Desktop**](https://mp.weixin.qq.com/s/1PVow3-HvItfUvSReGt6wQ) is the desktop workbench for [dsh-java](https://t.zsxq.com/kYcVt) (the Agent Runtime server). It is a ready-to-use desktop client for "digital human" AI agents — with the DSH Java Agent Runtime built in, it works out of the box with zero external dependencies. A single digital human handles coding, drawing, document work and more, while multiple digital humans can team up across devices via dsh.v1 / A2A. Plugins, Skills, MCP and CLI extend it on demand.
@@ -42,7 +42,7 @@
 
 Download the installer for your platform from GitHub Releases:
 
-- GitHub: [https://github.com/linlannet/dsh-java-desktop/releases](https://github.com/linlannet/dsh-java-desktop/releases)
+- GitHub: [https://github.com/linlannet/dsh-desktop/releases](https://github.com/linlannet/dsh-desktop/releases)
 
 | Platform | Architecture |
 |:---|:---|
@@ -284,7 +284,7 @@ The right info rail shows the Git status of the current workspace and its sub-pr
 ## 📁 Project Structure
 
 ```text
-dsh-java-desktop/
+dsh-desktop/
 ├── src/                            # React frontend
 │   ├── App.tsx                     # App main container (sessions/projects/streaming/reconciliation)
 │   ├── components/                 # UI components (28)
@@ -343,7 +343,7 @@ Companion server project: `../dsh-java` (sibling directory). **After changing th
 
 ## 🚢 Releases & Auto Updates
 
-The four platforms trigger builds independently via their own tags; on success, installers and Tauri updater signature files are uploaded to the corresponding `dsh-java-desktop-v*` GitHub Release:
+The four platforms trigger builds independently via their own tags; on success, installers and Tauri updater signature files are uploaded to the corresponding `dsh-desktop-v*` GitHub Release:
 
 | Platform | Tag |
 | --- | --- |
@@ -355,7 +355,7 @@ The four platforms trigger builds independently via their own tags; on success, 
 The app checks for updates at the following endpoint (auto-check on startup; when a new version is found, one-click download, install and restart):
 
 ```text
-https://github.com/linlannet/dsh-java-desktop/releases/latest/download/latest.json
+https://github.com/linlannet/dsh-desktop/releases/latest/download/latest.json
 ```
 
 CI requires the following in the repository `Settings → Secrets and variables → Actions`:
@@ -381,7 +381,7 @@ CI requires the following in the repository `Settings → Secrets and variables 
 
 **Build fails with `Permission denied (os error 13)` after replacing the JAR / large files**: the cached copy under `src-tauri/target/debug/agent/` is read-only — delete that cache directory and rebuild; do not wipe the whole `target`.
 
-**`tauri dev` reports `Port 1420 is already in use` / leftover processes**: the npm wrapper exiting does not mean the app exited — the window, embedded java and vite often survive as orphans. For a clean restart: kill leftover `dsh-java-desktop`, `java`, and vite (node:1420) processes before starting.
+**`tauri dev` reports `Port 1420 is already in use` / leftover processes**: the npm wrapper exiting does not mean the app exited — the window, embedded java and vite often survive as orphans. For a clean restart: kill leftover `dsh-desktop`, `java`, and vite (node:1420) processes before starting.
 
 **Lost context caused by stale session IDs**: localStorage may still hold `collab-<ts>` prefixed session IDs from older builds, making the server create a new agent every time; delete the corresponding sessions or clear localStorage.
 

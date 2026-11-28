@@ -18,4 +18,4 @@ jobs:
       runner: macos-15-intel
       target: x86_64-apple-darwin
       runtime-target: darwin-x64
-      release-tag-prefix: dsh-java-desktop-v
+      release-tag-prefix: dsh-desktop-v

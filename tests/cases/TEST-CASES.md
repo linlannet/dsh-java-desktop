@@ -1,7 +1,7 @@
-# dsh-java-desktop 全量测试用例集（生产就绪度验证）
+# dsh-desktop 全量测试用例集（生产就绪度验证）
 
 > 版本：v1.0（2026-09-22）
-> 范围：dsh-java-desktop 桌面壳（Tauri + React）+ 内嵌服务端 dsh-java（standalone · H2 · 内置 JRE 17）
+> 范围：dsh-desktop 桌面壳（Tauri + React）+ 内嵌服务端 dsh-java（standalone · H2 · 内置 JRE 17）
 > 目标：验证该产品具备对标 Codex CLI / WorkBuddy 的生产级能力，重点覆盖**长对话、长任务**。
 
 ---

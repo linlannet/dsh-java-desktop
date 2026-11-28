@@ -18,8 +18,8 @@
   ];
 
   const workspaces = [
-    { name: "DSH-Java-Desktop", path: "/Users/fuzhengwei/DevOps/DSH-Java-Desktop" },
-    { name: "mall-admin", path: "/Users/fuzhengwei/DevOps/mall-admin" },
+    { name: "dsh-desktop", path: "/Users/mac/Workspace/linlannet/dsh-desktop" },
+    { name: "mall-admin", path: "/Users/mac/Workspace/linlannet/dsh-java-plugins/dsh-java-mall" },
   ];
 
   const modelSetting = [{

@@ -56,7 +56,7 @@ DSH_EMIS_OIDC_POST_LOGOUT_REDIRECT_URI=http://localhost:<port>/
 - `RouteAuthResolver.java`：放行 `/bridge.html` 匿名访问。
 - `static/bridge.html`：登录完成落地页。
 
-**桌面端 dsh-java-desktop**
+**桌面端 dsh-desktop**
 - `src/lib/emis-oidc.ts`（新增）：ticket 登录、轮询、配置/身份存取、退出。
 - `src/components/AccountSettings.tsx`：重写为 EMIS OIDC 面板（开关 / 登录 / 刷新 / 退出 / 当前身份）。
 - `src/components/Sidebar.tsx`：账号入口改为 OIDC 流程，删除旧用户名密码弹窗。

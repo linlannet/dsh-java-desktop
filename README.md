@@ -12,7 +12,7 @@
 
 > **TL;DR** · DSH Java 桌面工作台：Tauri 2 + React 19，内置 Agent Runtime，数字人协作与 A2A 协议。
 > **Keywords**: Desktop, Tauri, React, AI Agent, Digital Human, A2A, MCP
-> **相关仓库**: [dsh-java](https://github.com/linlannet/dsh-java) · [dsh-java-plugins](https://github.com/linlannet/dsh-java-plugins) · [dsh-java-mobile](https://github.com/linlannet/dsh-java-mobile) · [dsh-java-release](https://github.com/linlannet/dsh-java-release)
+> **相关仓库**: [dsh-java](https://github.com/linlannet/dsh-java) · [dsh-java-plugins](https://github.com/linlannet/dsh-java-plugins) · [dsh-mobile](https://github.com/linlannet/dsh-mobile) · [dsh-java-release](https://github.com/linlannet/dsh-java-release)
 > **AI 入口**: [llms.txt](./llms.txt) · [AGENTS.md](./AGENTS.md)
 
 > [**DSH Java Desktop**](https://mp.weixin.qq.com/s/1PVow3-HvItfUvSReGt6wQ) 是 [dsh-java](https://t.zsxq.com/kYcVt)（Agent Runtime 服务端）的桌面工作台。它是一款开箱即用的「数字人」AI 智能体桌面端 —— 内置 DSH Java Agent Runtime，零依赖装完即用；单个数字人胜任编码、绘图、文档等多场景工作，多个数字人经 dsh.v1 / A2A 跨端组建协作团队，插件 / Skills / MCP / CLI 随需扩展。
@@ -42,7 +42,7 @@
 
 从 GitHub Releases 下载对应平台安装包：
 
-- GitHub: [https://github.com/linlannet/dsh-java-desktop/releases](https://github.com/linlannet/dsh-java-desktop/releases)
+- GitHub: [https://github.com/linlannet/dsh-desktop/releases](https://github.com/linlannet/dsh-desktop/releases)
 
 | 平台 | 架构 |
 |:---|:---|
@@ -284,7 +284,7 @@ flowchart LR
 ## 📁 项目结构
 
 ```text
-dsh-java-desktop/
+dsh-desktop/
 ├── src/                            # React 前端
 │   ├── App.tsx                     # 应用主容器（会话/项目/流式/对账）
 │   ├── components/                 # UI 组件（28 个）
@@ -343,7 +343,7 @@ dsh-java-desktop/
 
 ## 🚢 发布与自动更新
 
-四个平台使用独立 tag 分别触发构建；成功后安装包与 Tauri updater 签名文件上传到对应 `dsh-java-desktop-v*` GitHub Release：
+四个平台使用独立 tag 分别触发构建；成功后安装包与 Tauri updater 签名文件上传到对应 `dsh-desktop-v*` GitHub Release：
 
 | 平台 | Tag |
 | --- | --- |
@@ -355,7 +355,7 @@ dsh-java-desktop/
 应用通过以下端点检查更新（启动时自动检查，发现新版本可一键下载安装并重启）：
 
 ```text
-https://github.com/linlannet/dsh-java-desktop/releases/latest/download/latest.json
+https://github.com/linlannet/dsh-desktop/releases/latest/download/latest.json
 ```
 
 CI 需在仓库 `Settings → Secrets and variables → Actions` 配置：
@@ -381,7 +381,7 @@ CI 需在仓库 `Settings → Secrets and variables → Actions` 配置：
 
 **替换 JAR / 大文件后构建报 `Permission denied (os error 13)`**：`src-tauri/target/debug/agent/` 里的缓存副本是只读的，删除该缓存目录后重新构建即可，不要清整个 `target`。
 
-**`tauri dev` 报 `Port 1420 is already in use` / 残留进程**：npm 包装进程退出不等于应用退出——窗口/内置 java/vite 常作为孤儿存活。干净重启：kill 残留的 `dsh-java-desktop`、`java`、vite（node:1420）进程后再启动。
+**`tauri dev` 报 `Port 1420 is already in use` / 残留进程**：npm 包装进程退出不等于应用退出——窗口/内置 java/vite 常作为孤儿存活。干净重启：kill 残留的 `dsh-desktop`、`java`、vite（node:1420）进程后再启动。
 
 **旧会话 ID 导致丢上下文**：localStorage 里可能残留旧版本构建的 `collab-<ts>` 前缀会话 ID，会让服务端每次新建 agent；删除对应会话或清理 localStorage 即可。
 

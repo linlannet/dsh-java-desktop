@@ -18,4 +18,4 @@ jobs:
       runner: windows-latest
       target: x86_64-pc-windows-msvc
       runtime-target: win32-x64
-      release-tag-prefix: dsh-java-desktop-v
+      release-tag-prefix: dsh-desktop-v

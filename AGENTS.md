@@ -1,4 +1,4 @@
-# AGENTS.md — dsh-java-desktop
+# AGENTS.md — dsh-desktop
 
 ## Project
 Tauri 2 + React 19 desktop client for DSH Java; bundles the agent runtime (JAR + JRE). Version 0.2.2.

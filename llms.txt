@@ -1,4 +1,4 @@
-# DSH Java Desktop (dsh-java-desktop) — Desktop client
+# DSH Java Desktop (dsh-desktop) — Desktop client
 
 > Tauri 2 + React 19 desktop client for DSH Java. Bundles the dsh-java agent runtime (JAR + JRE)
 > and provides digital-human collaboration, A2A protocol, plugins, skills and approval UI.
@@ -12,8 +12,8 @@ Key capabilities:
 
 Tech stack: Tauri 2 (Rust), React 19, Vite, TypeScript
 Version: 0.2.2
-Repository: https://github.com/linlannet/dsh-java-desktop
-Related: dsh-java, dsh-java-plugins, dsh-java-mobile, dsh-java-release
+Repository: https://github.com/linlannet/dsh-desktop
+Related: dsh-java, dsh-java-plugins, dsh-mobile, dsh-java-release
 
 Build: `npm install && npm run build`
 Test:  `npm test` (vitest)

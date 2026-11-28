@@ -23,9 +23,9 @@ if [ -f "$APP_SUPPORT" ]; then
   fi
 fi
 
-if pgrep -f "target/debug/dsh-java-desktop" >/dev/null 2>&1; then
+if pgrep -f "target/debug/dsh-desktop" >/dev/null 2>&1; then
   echo "      停止旧桌面实例 ..."
-  pkill -f "target/debug/dsh-java-desktop" 2>/dev/null
+  pkill -f "target/debug/dsh-desktop" 2>/dev/null
   sleep 1
 fi
 
