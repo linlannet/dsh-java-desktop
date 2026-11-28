@@ -4,11 +4,16 @@
 
 ### 数字人 AI 智能体桌面端 · 内置 Agent Runtime · 数字人协作 · A2A 开放协议
 
-[![Version](https://img.shields.io/badge/version-0.2.2-blue.svg)](./src-tauri/tauri.conf.json)
+[![Version](https://img.shields.io/badge/version-0.2.3-blue.svg)](./src-tauri/tauri.conf.json)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](#-使用方式)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app)
 
 </div>
+
+> **TL;DR** · DSH Java 桌面工作台：Tauri 2 + React 19，内置 Agent Runtime，数字人协作与 A2A 协议。
+> **Keywords**: Desktop, Tauri, React, AI Agent, Digital Human, A2A, MCP
+> **相关仓库**: [dsh-java](https://github.com/linlannet/dsh-java) · [dsh-java-plugins](https://github.com/linlannet/dsh-java-plugins) · [dsh-java-mobile](https://github.com/linlannet/dsh-java-mobile) · [dsh-java-release](https://github.com/linlannet/dsh-java-release)
+> **AI 入口**: [llms.txt](./llms.txt) · [AGENTS.md](./AGENTS.md)
 
 > [**DSH Java Desktop**](https://mp.weixin.qq.com/s/1PVow3-HvItfUvSReGt6wQ) 是 [dsh-java](https://t.zsxq.com/kYcVt)（Agent Runtime 服务端）的桌面工作台。它是一款开箱即用的「数字人」AI 智能体桌面端 —— 内置 DSH Java Agent Runtime，零依赖装完即用；单个数字人胜任编码、绘图、文档等多场景工作，多个数字人经 dsh.v1 / A2A 跨端组建协作团队，插件 / Skills / MCP / CLI 随需扩展。
 >

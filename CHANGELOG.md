@@ -2,6 +2,17 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/) 约定。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.2.3] - 2026-11-28
+
+### 新增
+- 连接器设置（对齐 dsh-java 0.2.3 `ConnectorController`）：设置 → 扩展 → 连接器，展示服务端评估目录与账号状态，支持连接/重新授权、断开、刷新令牌；OAuth 授权用系统浏览器打开，令牌仅存服务端
+- EMIS 企业身份登录：设置 → 系统 → EMIS登录（OIDC 授权码 + PKCE + JWKS 验签），token 只在宿主 HttpSession，桌面端仅存展示身份
+- 登录态跨重启保持：后端签发 HMAC session，桌面端用 Tauri 安全凭据（0600）保存，启动时恢复，并定时清理过期项
+
+### 变更
+- 版本声明对齐 dsh-java 0.2.3：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`README` badge、`UI_BUILD_ID`、`UpdateStatusBadge` 默认版本统一至 0.2.3
+- 底部账号入口只由"开启登录入口"开关控制，消除重复入口；开启后未登录可走 OIDC 登录，已登录显示当前人员
+
 ## [0.2.2] - 2026-11-04
 
 ### 新增

@@ -5,6 +5,8 @@ import BotsSettings from "./BotsSettings";
 import { CliSettings, McpSettings, SkillsSettings } from "./ExtensionsSettings";
 import { DigitalHumansSettings } from "./DigitalHumansSettings";
 import MobileDevicesSettings from "./MobileDevicesSettings";
+import AccountSettings from "./AccountSettings";
+import ConnectorsSettings from "./ConnectorsSettings";
 import type {
   AgentServiceState,
   ApprovalMode,
@@ -16,7 +18,7 @@ import type {
   WorkspaceEntry,
 } from "../types";
 
-export type SettingsSection = "models" | "digital-humans" | "bots" | "mobile-devices" | "service" | "preferences" | "plugins" | "skills" | "mcp" | "cli";
+export type SettingsSection = "models" | "digital-humans" | "bots" | "mobile-devices" | "service" | "preferences" | "plugins" | "connectors" | "skills" | "mcp" | "cli" | "account";
 
 type SettingsViewProps = {
   service: AgentServiceState | null;
@@ -136,6 +138,15 @@ function BotIcon({ className }: { className?: string }) {
   );
 }
 
+function AccountIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <circle cx="12" cy="8.2" r="3.4" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M4.8 19.4c.9-3.6 3.7-5.6 7.2-5.6s6.3 2 7.2 5.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function CloseIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className}>
@@ -228,6 +239,8 @@ export default function SettingsView({
     { id: "mcp", title: "MCP 服务", description: "添加、测试与管理 MCP server 连接", icon: <McpIcon className="icon-16" />, group: "扩展" },
     { id: "cli", title: "CLI 子智能体", description: "配置 claude / codex / ACP 外部 CLI 命令", icon: <CliIcon className="icon-16" />, group: "扩展" },
     { id: "plugins", title: "插件", description: "安装插件包、上传 JAR，配置插件参数", icon: <PuzzleIcon className="icon-16" />, group: "扩展" },
+  { id: "connectors", title: "连接器", description: "连接器账号授权、连接状态与诊断", icon: <PuzzleIcon className="icon-16" />, group: "扩展" },
+    { id: "account", title: "EMIS登录", description: "企业身份（linlan-emis OIDC）登录状态与登录入口", icon: <AccountIcon className="icon-16" />, group: "系统" },
     { id: "mobile-devices", title: "移动设备", description: "生成配对码、管理已配对手机与访问开关", icon: <SettingsIcon className="icon-16" />, group: "系统" },
     { id: "service", title: "服务", description: "查看本地智能体服务连接状态与 Java Runtime", icon: <SettingsIcon className="icon-16" />, group: "系统" },
     { id: "preferences", title: "偏好", description: "工具执行审批策略、沙箱边界与推理强度", icon: <ShieldIcon className="icon-16" />, group: "系统" },
@@ -360,12 +373,20 @@ export default function SettingsView({
             <BotsSettings servicePort={service?.port ?? null} />
           ) : null}
 
+          {activeSection === "account" ? (
+            <AccountSettings />
+          ) : null}
+
           {activeSection === "mobile-devices" ? (
             <MobileDevicesSettings servicePort={service?.port ?? null} />
           ) : null}
 
           {activeSection === "plugins" ? (
             <PluginsSettings servicePort={service?.port ?? null} />
+          ) : null}
+
+          {activeSection === "connectors" ? (
+            <ConnectorsSettings servicePort={service?.port ?? null} />
           ) : null}
 
           {activeSection === "skills" ? (

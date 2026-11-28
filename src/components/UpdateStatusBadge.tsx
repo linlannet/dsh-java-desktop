@@ -9,7 +9,7 @@ type UpdateStatus =
   | { kind: "failed" };
 
 export default function UpdateStatusBadge() {
-  const [currentVersion, setCurrentVersion] = useState("0.2.2");
+  const [currentVersion, setCurrentVersion] = useState("0.2.3");
   const [status, setStatus] = useState<UpdateStatus>({ kind: "checking" });
 
   useEffect(() => {

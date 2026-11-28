@@ -10,6 +10,11 @@
 
 </div>
 
+> **TL;DR** · DSH Java desktop workbench: Tauri 2 + React 19, bundled agent runtime, digital-human collaboration and A2A protocol.
+> **Keywords**: Desktop, Tauri, React, AI Agent, Digital Human, A2A, MCP
+> **Repositories**: [dsh-java](https://github.com/linlannet/dsh-java) · [dsh-java-plugins](https://github.com/linlannet/dsh-java-plugins) · [dsh-java-mobile](https://github.com/linlannet/dsh-java-mobile) · [dsh-java-release](https://github.com/linlannet/dsh-java-release)
+> **For AI**: [llms.txt](./llms.txt) · [AGENTS.md](./AGENTS.md)
+
 > [**DSH Java Desktop**](https://mp.weixin.qq.com/s/1PVow3-HvItfUvSReGt6wQ) is the desktop workbench for [dsh-java](https://t.zsxq.com/kYcVt) (the Agent Runtime server). It is a ready-to-use desktop client for "digital human" AI agents — with the DSH Java Agent Runtime built in, it works out of the box with zero external dependencies. A single digital human handles coding, drawing, document work and more, while multiple digital humans can team up across devices via dsh.v1 / A2A. Plugins, Skills, MCP and CLI extend it on demand.
 >
 > The desktop app is only the shell; capabilities live on the server side: **TypeScript + React** builds the UI, **Tauri 2** handles the window, process hosting and native capabilities, while the agent capabilities are implemented by `dsh-java`. The desktop shell launches the embedded Spring Boot JAR and talks to it over the local `127.0.0.1` HTTP/SSE API (this is also the best way for the shell to quickly integrate remote agents).

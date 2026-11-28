@@ -1,4 +1,12 @@
 import { storage_get, storage_set } from "../platform/storage";
+import {
+  clearEmisTicket,
+  emisLogout,
+  loadEmisIdentity,
+  pollEmisTicket,
+  startEmisLogin,
+  type EmisIdentity,
+} from "../lib/emis-oidc";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { DigitalHuman, SessionSummary, WorkspaceEntry } from "../types";
 import { sanitizeDisplayName, stripHiddenContext, truncateSessionTitle, visibleUserMessage } from "../lib/text";
@@ -16,6 +24,7 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  UserIcon,
   XIcon,
 } from "./icons";
 
@@ -42,6 +51,111 @@ const TIME_FILTER_OPTIONS: Array<{ value: SessionTimeFilter; label: string }> = 
   { value: "7d", label: "最近 7 天" },
   { value: "30d", label: "最近 30 天" },
 ];
+
+// ── 账号入口（企业身份 OIDC：头像 + 昵称/未登录 + 箭头） ──
+/** 账号入口是否可见：仅由"开启登录入口"开关决定（OIDC 方案不需要填 URI） */
+function loadLoginEntryVisible(): boolean {
+  try {
+    const raw = storage_get("dsh-auth-config");
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { enabled?: boolean };
+    return Boolean(parsed.enabled);
+  } catch {
+    return false;
+  }
+}
+
+/** 发起企业身份登录并轮询取回身份；供底部账号入口与设置面板共用 */
+async function doEmisLoginFlow(onIdentity: (identity: EmisIdentity) => void): Promise<void> {
+  const ticket = await startEmisLogin();
+  const identity = await pollEmisTicket(ticket, { timeoutMs: 180_000, intervalMs: 1_500 });
+  clearEmisTicket();
+  if (identity) {
+    onIdentity(identity);
+    window.dispatchEvent(new Event("dsh-auth-changed"));
+  }
+}
+
+/** 底部账号入口：未登录点击走 OIDC 登录，已登录显示身份并可退出 */
+function AccountEntry() {
+  const [user, setUser] = useState<EmisIdentity | null>(() => loadEmisIdentity());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [tip, setTip] = useState("");
+
+  useEffect(() => {
+    const sync = () => setUser(loadEmisIdentity());
+    const openLogin = () => {
+      setBusy(true);
+      setTip("已在系统浏览器打开企业身份登录，完成后回到此窗口自动同步…");
+      void doEmisLoginFlow((next) => setUser(next))
+        .catch((e) => setTip(`登录失败：${e instanceof Error ? e.message : String(e)}`))
+        .finally(() => { setBusy(false); setTip(""); });
+    };
+    window.addEventListener("dsh-auth-changed", sync);
+    window.addEventListener("dsh-open-login", openLogin);
+    return () => {
+      window.removeEventListener("dsh-auth-changed", sync);
+      window.removeEventListener("dsh-open-login", openLogin);
+    };
+  }, []);
+
+  const displayName = user ? (user.nickName || user.userName || "已登录") : "未登录";
+
+  const handleClick = () => {
+    if (user) { setMenuOpen((v) => !v); return; }
+    if (busy) return;
+    setBusy(true);
+    setTip("已在系统浏览器打开企业身份登录，完成后回到此窗口自动同步…");
+    void doEmisLoginFlow((next) => setUser(next))
+      .catch((e) => setTip(`登录失败：${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => { setBusy(false); setTip(""); });
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className="footer-account"
+        title={user ? displayName : "企业身份登录"}
+        onClick={handleClick}
+      >
+        <span className={`footer-avatar${user ? "" : " default"}`}>
+          {user?.avatarUrl ? (
+            <img src={user.avatarUrl} alt="" />
+          ) : user ? (
+            <b>{(user.nickName || user.userName || "U").charAt(0).toUpperCase()}</b>
+          ) : (
+            <UserIcon className="icon-14" />
+          )}
+        </span>
+        <span className="footer-account-name">{busy ? "登录中…" : displayName}</span>
+        <ChevronIcon className="footer-account-chevron" />
+      </button>
+      {tip ? <div className="account-msg ok" style={{ padding: "8px 12px", fontSize: 12 }}>{tip}</div> : null}
+      {menuOpen ? (
+        <div className="account-menu-overlay" onClick={() => setMenuOpen(false)}>
+          <div className="account-menu" onClick={(event) => event.stopPropagation()}>
+            <div className="account-menu-name">{displayName}</div>
+            <button
+              type="button"
+              className="account-menu-item"
+              onClick={() => {
+                void emisLogout().finally(() => {
+                  setUser(null);
+                  setMenuOpen(false);
+                  window.dispatchEvent(new Event("dsh-auth-changed"));
+                });
+              }}
+            >
+              退出登录
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
 
 type SidebarProps = {
   activeView: WorkspaceView;
@@ -229,6 +343,13 @@ export default function Sidebar({
   const [dragging, setDragging] = useState<SidebarDragState | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTargetState | null>(null);
   const [dragPreview, setDragPreview] = useState<DragPreviewState | null>(null);
+  // 账号入口可见性：配置开启且填写 URI 时显示（未登录可登录 / 已登录显示人员信息），关闭则隐藏
+  const [loginEntryVisible, setLoginEntryVisible] = useState(() => loadLoginEntryVisible());
+  useEffect(() => {
+    const sync = () => setLoginEntryVisible(loadLoginEntryVisible());
+    window.addEventListener("dsh-auth-changed", sync);
+    return () => window.removeEventListener("dsh-auth-changed", sync);
+  }, []);
   // 会话列表分页：每个项目默认只展示前几条，点击「加载更多」再追加
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const showMoreSessions = (path: string, step: number) => {
@@ -1074,11 +1195,15 @@ export default function Sidebar({
       ) : null}
 
       <div className="sidebar-footer">
-        <button className={activeView === "settings" ? "footer-link active" : "footer-link"} onClick={() => onViewChange("settings")}>
+        {loginEntryVisible ? <AccountEntry /> : null}
+        <button
+          className={activeView === "settings" ? "footer-link footer-gear active" : "footer-link footer-gear"}
+          onClick={() => onViewChange("settings")}
+          title="设置"
+          aria-label="设置"
+        >
           <SettingsIcon className="icon-16" />
-          <span>设置</span>
         </button>
-
       </div>
 
       {projectModalOpen ? (
