@@ -189,6 +189,45 @@ export type PluginConfigItem = {
   value?: string;
 };
 
+/** 连接器账号状态（对齐后端 ConnectorAccountState） */
+export type ConnectorAccountState =
+  | "DISCONNECTED"
+  | "AUTHORIZATION_REQUIRED"
+  | "CONNECTED"
+  | "EXPIRED"
+  | "ERROR";
+
+/** 服务端可安全展示的连接器诊断 */
+export type ConnectorDiagnostic = {
+  code: string;
+  message: string;
+  retryable?: boolean;
+};
+
+/** 连接器评估目录项（品牌/名称/功能预览由服务端提供） */
+export type ConnectorAssessment = {
+  connectorId: string;
+  displayName?: string;
+  upstreamForm?: string;
+  javaStrategy?: string;
+  decision?: string;
+  alternative?: string;
+  brandIcon?: string;
+  localizedNames?: Record<string, string>;
+  featurePreviews?: Record<string, string[]>;
+};
+
+/** 连接器账号状态 */
+export type ConnectorAccountStatus = {
+  connectorId: string;
+  state: ConnectorAccountState;
+  connected: boolean;
+  authorizationUrl?: string | null;
+  expiresAt?: string | null;
+  updatedAt?: string | null;
+  diagnostic?: ConnectorDiagnostic | null;
+};
+
 export type ModelDraft = {
   channelCode?: string;
   displayName: string;

@@ -6,6 +6,7 @@ import { CliSettings, McpSettings, SkillsSettings } from "./ExtensionsSettings";
 import { DigitalHumansSettings } from "./DigitalHumansSettings";
 import MobileDevicesSettings from "./MobileDevicesSettings";
 import AccountSettings from "./AccountSettings";
+import ConnectorsSettings from "./ConnectorsSettings";
 import type {
   AgentServiceState,
   ApprovalMode,
@@ -17,7 +18,7 @@ import type {
   WorkspaceEntry,
 } from "../types";
 
-export type SettingsSection = "models" | "digital-humans" | "bots" | "mobile-devices" | "service" | "preferences" | "plugins" | "skills" | "mcp" | "cli" | "account";
+export type SettingsSection = "models" | "digital-humans" | "bots" | "mobile-devices" | "service" | "preferences" | "plugins" | "connectors" | "skills" | "mcp" | "cli" | "account";
 
 type SettingsViewProps = {
   service: AgentServiceState | null;
@@ -238,6 +239,7 @@ export default function SettingsView({
     { id: "mcp", title: "MCP 服务", description: "添加、测试与管理 MCP server 连接", icon: <McpIcon className="icon-16" />, group: "扩展" },
     { id: "cli", title: "CLI 子智能体", description: "配置 claude / codex / ACP 外部 CLI 命令", icon: <CliIcon className="icon-16" />, group: "扩展" },
     { id: "plugins", title: "插件", description: "安装插件包、上传 JAR，配置插件参数", icon: <PuzzleIcon className="icon-16" />, group: "扩展" },
+  { id: "connectors", title: "连接器", description: "连接器账号授权、连接状态与诊断", icon: <PuzzleIcon className="icon-16" />, group: "扩展" },
     { id: "account", title: "EMIS登录", description: "企业身份（linlan-emis OIDC）登录状态与登录入口", icon: <AccountIcon className="icon-16" />, group: "系统" },
     { id: "mobile-devices", title: "移动设备", description: "生成配对码、管理已配对手机与访问开关", icon: <SettingsIcon className="icon-16" />, group: "系统" },
     { id: "service", title: "服务", description: "查看本地智能体服务连接状态与 Java Runtime", icon: <SettingsIcon className="icon-16" />, group: "系统" },
@@ -381,6 +383,10 @@ export default function SettingsView({
 
           {activeSection === "plugins" ? (
             <PluginsSettings servicePort={service?.port ?? null} />
+          ) : null}
+
+          {activeSection === "connectors" ? (
+            <ConnectorsSettings servicePort={service?.port ?? null} />
           ) : null}
 
           {activeSection === "skills" ? (

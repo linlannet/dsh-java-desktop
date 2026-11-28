@@ -4,7 +4,7 @@
 
 ### 数字人 AI 智能体桌面端 · 内置 Agent Runtime · 数字人协作 · A2A 开放协议
 
-[![Version](https://img.shields.io/badge/version-0.2.2-blue.svg)](./src-tauri/tauri.conf.json)
+[![Version](https://img.shields.io/badge/version-0.2.3-blue.svg)](./src-tauri/tauri.conf.json)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](#-使用方式)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app)
 

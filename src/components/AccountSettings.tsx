@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  EMIS_CONFIG_KEY,
   clearEmisTicket,
   emisLogout,
   loadEmisConfig,
@@ -8,7 +7,6 @@ import {
   pendingEmisTicket,
   pollEmisTicket,
   saveEmisConfig,
-  saveEmisIdentity,
   startEmisLogin,
   type EmisIdentity,
 } from "../lib/emis-oidc";

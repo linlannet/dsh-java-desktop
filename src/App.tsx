@@ -83,7 +83,7 @@ import type { UserAnswerSubmission } from "./components/QuestionCard";
 
 // UI 构建标记：渲染在顶部标题栏，用于确认窗口内 webview 加载的是哪一版前端
 // （排查「修复已提交但窗口仍跑旧代码」的问题；发版前可移除）
-const UI_BUILD_ID = "20261103-0.2.2";
+const UI_BUILD_ID = "20261128-0.2.3";
 
 const emptyModelDraft: ModelDraft = {
   displayName: "",

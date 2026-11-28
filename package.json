@@ -1,7 +1,7 @@
 {
   "name": "dsh-java-desktop",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "DSH Java desktop client — Tauri 2 + React 19, bundled agent runtime, digital human collaboration and A2A protocol.",
   "keywords": [
     "agent",

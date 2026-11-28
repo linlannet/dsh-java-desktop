@@ -3,6 +3,8 @@ import { connection_base_url, type ConnectionProfile } from "../platform/connect
 import { is_known_stream_event } from "./events";
 import type {
   ApiEnvelope,
+  ConnectorAccountStatus,
+  ConnectorAssessment,
   ConversationMessage,
   HarnessPlugin,
   SessionSummary,
@@ -722,6 +724,39 @@ export async function setBotEnabled(port: number | ConnectionProfile, botId: str
 
 export async function testBot(port: number | ConnectionProfile, botId: string): Promise<FeishuBot> {
   return request<FeishuBot>(port, `/api/harness/bots/${encodeURIComponent(botId)}/test`, {
+    method: "POST",
+  });
+}
+
+// ── 连接器账号（对齐 dsh-java 0.2.3 ConnectorController） ─────────────
+const CONNECTOR_API = "/api/harness/connectors";
+
+export function listConnectorAssessments(port: number | ConnectionProfile): Promise<ConnectorAssessment[]> {
+  return request<ConnectorAssessment[]>(port, `${CONNECTOR_API}/assessments`);
+}
+
+export function listConnectorAccounts(port: number | ConnectionProfile): Promise<ConnectorAccountStatus[]> {
+  return request<ConnectorAccountStatus[]>(port, `${CONNECTOR_API}/accounts`);
+}
+
+export function getConnectorAccount(port: number | ConnectionProfile, connectorId: string): Promise<ConnectorAccountStatus> {
+  return request<ConnectorAccountStatus>(port, `${CONNECTOR_API}/accounts/${encodeURIComponent(connectorId)}`);
+}
+
+export function connectConnector(port: number | ConnectionProfile, connectorId: string): Promise<ConnectorAccountStatus> {
+  return request<ConnectorAccountStatus>(port, `${CONNECTOR_API}/accounts/${encodeURIComponent(connectorId)}/connect`, {
+    method: "POST",
+  });
+}
+
+export function disconnectConnector(port: number | ConnectionProfile, connectorId: string): Promise<ConnectorAccountStatus> {
+  return request<ConnectorAccountStatus>(port, `${CONNECTOR_API}/accounts/${encodeURIComponent(connectorId)}/disconnect`, {
+    method: "POST",
+  });
+}
+
+export function refreshConnector(port: number | ConnectionProfile, connectorId: string): Promise<ConnectorAccountStatus> {
+  return request<ConnectorAccountStatus>(port, `${CONNECTOR_API}/accounts/${encodeURIComponent(connectorId)}/refresh`, {
     method: "POST",
   });
 }
